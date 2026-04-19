@@ -1,0 +1,150 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Auron Design Tokens ──────────────────────────────────────── */
+:root {
+  /* Brand */
+  --auron-purple: #7c3aed;
+  --auron-purple-light: #a78bfa;
+  --auron-purple-dark: #5b21b6;
+
+  /* Backgrounds */
+  --bg-base: #030712;
+  --bg-surface: #0f1117;
+  --bg-card: #161b27;
+  --bg-input: #1c2333;
+
+  /* Borders */
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-default: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.18);
+
+  /* Text */
+  --text-primary: #f9fafb;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+
+  /* Status */
+  --status-success: #10b981;
+  --status-warning: #f59e0b;
+  --status-error: #ef4444;
+  --status-info: #3b82f6;
+}
+
+/* ── Base ─────────────────────────────────────────────────────── */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-inter), -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* ── Scrollbar ───────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* ── Selection ───────────────────────────────────────────────── */
+::selection {
+  background: rgba(124, 58, 237, 0.35);
+  color: #fff;
+}
+
+/* ── Focus ring ──────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--auron-purple-light);
+  outline-offset: 2px;
+}
+
+/* ── Animations ──────────────────────────────────────────────── */
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.4); }
+  50%       { box-shadow: 0 0 0 8px rgba(124, 58, 237, 0); }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes typing-dot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30%            { transform: translateY(-4px); opacity: 1; }
+}
+
+.animate-slide-up   { animation: slide-up 0.25s ease forwards; }
+.animate-fade-in    { animation: fade-in 0.2s ease forwards; }
+.animate-pulse-glow { animation: pulse-glow 2s infinite; }
+
+/* ── Typing indicator ─────────────────────────────────────────── */
+.typing-dot:nth-child(1) { animation: typing-dot 1.2s infinite 0s; }
+.typing-dot:nth-child(2) { animation: typing-dot 1.2s infinite 0.2s; }
+.typing-dot:nth-child(3) { animation: typing-dot 1.2s infinite 0.4s; }
+
+/* ── Glass card ──────────────────────────────────────────────── */
+.glass {
+  background: rgba(22, 27, 39, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-subtle);
+}
+
+/* ── Purple gradient text ────────────────────────────────────── */
+.gradient-text {
+  background: linear-gradient(135deg, #a78bfa 0%, #7c3aed 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Chat message bubble ─────────────────────────────────────── */
+.chat-bubble-user {
+  background: linear-gradient(135deg, #7c3aed, #5b21b6);
+  border-radius: 18px 18px 4px 18px;
+}
+
+.chat-bubble-assistant {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 18px 18px 18px 4px;
+}
+
+/* ── Input glow on focus ─────────────────────────────────────── */
+.input-glow:focus-within {
+  box-shadow: 0 0 0 1px var(--auron-purple), 0 0 20px rgba(124, 58, 237, 0.15);
+}
+
+/* ── Hold-to-confirm progress bar ───────────────────────────── */
+.hold-bar {
+  width: var(--hold-progress, 0%);
+}
