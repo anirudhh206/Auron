@@ -1,6 +1,6 @@
 use cosmwasm_std::{
     attr, entry_point, to_json_binary, BankMsg, Binary, Coin, Deps, DepsMut, Env, MessageInfo,
-    Order, Response, StdResult, Uint128, CosmosMsg,
+    Order, Response, StdResult, Uint128, CosmosMsg, StakingMsg,
 };
 
 use crate::error::ContractError;
@@ -125,7 +125,7 @@ fn execute_lock(
 
     // Delegate to validator for yield
     // Note: This uses Cosmos SDK's staking module
-    msgs.push(CosmosMsg::Staking(cosmwasm_std::StakingMsg::Delegate {
+    msgs.push(CosmosMsg::Staking(StakingMsg::Delegate {
         validator: config.validator_address,
         amount: Coin {
             denom: "ucless".to_string(),
@@ -191,7 +191,7 @@ fn execute_withdraw(
     let mut msgs: Vec<CosmosMsg> = vec![];
 
     // Undelegate (unstake) from validator
-    msgs.push(CosmosMsg::Staking(cosmwasm_std::StakingMsg::Undelegate {
+    msgs.push(CosmosMsg::Staking(StakingMsg::Undelegate {
         validator: config.validator_address,
         amount: Coin {
             denom: "ucless".to_string(),
