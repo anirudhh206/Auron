@@ -170,6 +170,60 @@ export default function ChatInterface() {
     }
   }, [input, isLoading, isConnected, address, prefs, dailySpent, addMessage, setLoading, setPendingTx, openConnect]);
 
+  // ── Build transaction message from action ─────────────────────
+  async function buildTxMessage(action: any, confirmText: string): Promise<EncodeObject> {
+    switch (action.action) {
+      case "transfer":
+        return buildTransferTx(action);
+      case "stamp_agreement":
+        return buildAgreementTx(action, confirmText);
+      case "lock_savings":
+        return buildLockTx(action);
+      case "stamp_ownership":
+        return buildOwnershipTx(action);
+      case "claim_yield":
+        return buildClaimTx(action);
+      default:
+        throw new Error("Unknown action type");
+    }
+  }
+
+  async function buildTransferTx(action: any): Promise<EncodeObject> {
+    const contractAddress = CONTRACTS.transfer;
+    if (!isAllowedContract(contractAddress)) throw new Error("Contract not whitelisted");
+    const amountUcless = String(Math.floor((action.amount ?? 0) * 1_000_000));
+    return buildTransferMsg(contractAddress, address, action.recipient ?? "", amountUcless, action.note ?? undefined);
+  }
+
+  async function buildAgreementTx(action: any, confirmText: string): Promise<EncodeObject> {
+    const contractAddress = CONTRACTS.agreement;
+    if (!isAllowedContract(contractAddress)) throw new Error("Contract not whitelisted");
+    const contentHash = await sha256(action.description ?? confirmText);
+    return buildStampAgreementMsg(contractAddress, address, contentHash, action.recipient ?? "", action.description ?? "", "5000000");
+  }
+
+  async function buildLockTx(action: any): Promise<EncodeObject> {
+    const contractAddress = CONTRACTS.timelock;
+    if (!isAllowedContract(contractAddress)) throw new Error("Contract not whitelisted");
+    const amountUcless = String(Math.floor((action.amount ?? 0) * 1_000_000));
+    const unlockAt = Math.floor(Date.now() / 1000) + (action.duration_days ?? 30) * 86400;
+    return buildLockMsg(contractAddress, address, amountUcless, unlockAt, action.description ?? "Savings lock");
+  }
+
+  async function buildOwnershipTx(action: any): Promise<EncodeObject> {
+    const contractAddress = CONTRACTS.ownership;
+    if (!isAllowedContract(contractAddress)) throw new Error("Contract not whitelisted");
+    if (!action.file_hash) throw new Error("File hash missing — please attach your file first.");
+    return buildStampOwnershipMsg(contractAddress, address, action.file_hash, action.file_name ?? "file", action.description ?? "", "2000000");
+  }
+
+  async function buildClaimTx(action: any): Promise<EncodeObject> {
+    const contractAddress = CONTRACTS.timelock;
+    if (!isAllowedContract(contractAddress)) throw new Error("Contract not whitelisted");
+    if (!action.vault_id) throw new Error("Which vault? Say 'claim yield from vault-1'");
+    return buildClaimYieldMsg(contractAddress, address, action.vault_id);
+  }
+
   // ── Execute confirmed transaction ──────────────────────────────
   async function handleConfirm() {
     if (!pendingTx || !address) return;
@@ -178,49 +232,7 @@ export default function ChatInterface() {
     const { action, confirmText } = pendingTx;
 
     try {
-      let msg!: EncodeObject;
-      let contractAddress: string;
-
-      switch (action.action) {
-        case "transfer": {
-          contractAddress = CONTRACTS.transfer;
-          if (!isAllowedContract(contractAddress)) throw new Error("Contract not whitelisted");
-          const amountUcless = String(Math.floor((action.amount ?? 0) * 1_000_000));
-          msg = buildTransferMsg(contractAddress, address, action.recipient ?? "", amountUcless, action.note ?? undefined);
-          break;
-        }
-        case "stamp_agreement": {
-          contractAddress = CONTRACTS.agreement;
-          if (!isAllowedContract(contractAddress)) throw new Error("Contract not whitelisted");
-          const contentHash = await sha256(action.description ?? confirmText);
-          msg = buildStampAgreementMsg(contractAddress, address, contentHash, action.recipient ?? "", action.description ?? "", "5000000");
-          break;
-        }
-        case "lock_savings": {
-          contractAddress = CONTRACTS.timelock;
-          if (!isAllowedContract(contractAddress)) throw new Error("Contract not whitelisted");
-          const amountUcless = String(Math.floor((action.amount ?? 0) * 1_000_000));
-          const unlockAt = Math.floor(Date.now() / 1000) + (action.duration_days ?? 30) * 86400;
-          msg = buildLockMsg(contractAddress, address, amountUcless, unlockAt, action.description ?? "Savings lock");
-          break;
-        }
-        case "stamp_ownership": {
-          contractAddress = CONTRACTS.ownership;
-          if (!isAllowedContract(contractAddress)) throw new Error("Contract not whitelisted");
-          if (!action.file_hash) throw new Error("File hash missing — please attach your file first.");
-          msg = buildStampOwnershipMsg(contractAddress, address, action.file_hash, action.file_name ?? "file", action.description ?? "", "2000000");
-          break;
-        }
-        case "claim_yield": {
-          contractAddress = CONTRACTS.timelock;
-          if (!isAllowedContract(contractAddress)) throw new Error("Contract not whitelisted");
-          if (!action.vault_id) throw new Error("Which vault? Say 'claim yield from vault-1'");
-          msg = buildClaimYieldMsg(contractAddress, address, action.vault_id);
-          break;
-        }
-        default:
-          throw new Error("Unknown action type");
-      }
+      const msg = await buildTxMessage(action);
 
       const result = await requestTxBlock({
         messages: [msg],
@@ -230,7 +242,6 @@ export default function ChatInterface() {
 
       if (result.code !== 0) throw new Error("Transaction failed");
 
-      // Track daily spend
       if (action.action === "transfer" && action.amount) {
         addDailySpent(action.amount);
       }
