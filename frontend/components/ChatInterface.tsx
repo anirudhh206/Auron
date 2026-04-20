@@ -232,7 +232,7 @@ export default function ChatInterface() {
     const { action, confirmText } = pendingTx;
 
     try {
-      const msg = await buildTxMessage(action);
+      const msg = await buildTxMessage(action, confirmText);
 
       const result = await requestTxBlock({
         messages: [msg],
