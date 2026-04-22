@@ -1,0 +1,16 @@
+{
+  "name": "auron-scripts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Auron contract deployment scripts",
+  "scripts": {
+    "deploy": "node deploy.js",
+    "build": "bash build_contracts.sh"
+  },
+  "dependencies": {
+    "@cosmjs/cosmwasm-stargate": "^0.32.4",
+    "@cosmjs/stargate": "^0.32.4",
+    "@cosmjs/proto-signing": "^0.32.4",
+    "dotenv": "^16.4.5"
+  }
+}
