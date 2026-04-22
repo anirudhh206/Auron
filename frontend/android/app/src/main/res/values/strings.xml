@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Auron</string>
+    <string name="title_activity_main">Auron</string>
+    <string name="package_name">xyz.auron.app</string>
+    <string name="custom_url_scheme">xyz.auron.app</string>
+</resources>

@@ -35,12 +35,12 @@ const nextConfig = {
           {
             key: "Content-Security-Policy",
             value: [
-              "default-src 'self'",
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://vercel.live",
-              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-              "font-src 'self' https://fonts.gstatic.com",
-              "img-src 'self' data: blob: https:",
-              "connect-src 'self' https://*.initia.xyz https://api.anthropic.com wss://*.initia.xyz",
+              "default-src 'self' capacitor://localhost",
+              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://vercel.live capacitor://localhost",
+              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com capacitor://localhost",
+              "font-src 'self' https://fonts.gstatic.com capacitor://localhost",
+              "img-src 'self' data: blob: https: capacitor://localhost",
+              "connect-src 'self' https://*.initia.xyz https://api.anthropic.com wss://*.initia.xyz https://auron.vercel.app capacitor://localhost",
               "frame-ancestors 'none'",
             ].join("; "),
           },
