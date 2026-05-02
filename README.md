@@ -1,5 +1,5 @@
 # AURON
-### *Your money, your words.*
+### *Scan. Type. Pay. On Solana.*
 
 > "You just used a blockchain for the first time — without knowing it."
 
@@ -19,30 +19,49 @@ The other **8 billion** were left out — not because they couldn't benefit, but
 
 ## What Auron Is
 
-Auron is a **conversational AI interface** built on the Initia blockchain. You type what you want. It happens. The blockchain is completely invisible — until a receipt appears telling you exactly what was recorded, permanently, and who can never change it.
+Auron is a **conversational AI payment app** built on Solana. Scan any merchant QR code, type what you want to do, or speak it. Auron figures out the blockchain part — you get a receipt. The merchant gets INR. The blockchain is invisible.
 
 ```
-User:   "Send ₹500 to Priya"
-Auron:  Done. Permanently recorded. Here's your receipt.
-        ↳ 4 seconds. ₹0.02 fee. Immutable forever.
+User:   *scans a Swiggy QR code*
+Auron:  ₹450 to Swiggy Merchant · Pay with 5.41 USDC?
+User:   Confirm
+Auron:  Done. Confirmed on Solana in 400ms. Merchant gets ₹450 INR.
+        ↳ Fee: < $0.001. Recorded permanently.
 ```
 
-No wallet setup. No seed phrases. No gas fee confusion. No crypto knowledge required.
+No seed phrase confusion. No wallet addresses. No gas calculations. No crypto knowledge required.
 
-It feels like WhatsApp. It works like a bank. It runs on a blockchain.
+It feels like Google Pay. It runs on Solana.
 
 ---
 
-## Four Things. Plain English.
+## The Killer Feature — Scan Any UPI QR Code
 
-| What you type | What Auron does |
+India has 300 million+ merchants accepting UPI QR payments via Google Pay, PhonePe, Paytm. Every single one of them already has a QR code. Auron makes every one of those QR codes a crypto payment terminal — **without the merchant changing anything.**
+
+```
+User scans QR  →  Auron reads the UPI deep link  →  Confirms amount in ₹
+        ↓
+USDC sent on Solana via Jupiter  →  Off-ramp converts to INR
+        ↓
+Merchant receives ₹ in their existing UPI account. Done.
+```
+
+The merchant never touches crypto. The user never touches a wallet address. Auron handles everything in between — and earns via the FX spread.
+
+---
+
+## Five Things. Plain English.
+
+| What you do | What Auron does |
 |---|---|
-| `"Send ₹500 to Priya"` | Transfers funds on-chain in ~4 seconds |
-| `"Lock ₹10,000 for 3 months"` | Creates a timelock vault earning 12% APY |
-| `"Arjun owes me ₹1,500 — record it"` | Stamps an immutable agreement on-chain |
-| `"Prove this photo is mine"` | Hashes and timestamps your file permanently |
+| Scan a merchant QR code | Pays via USDC → INR in one tap |
+| `"Send ₹500 to Priya"` | Transfers SOL or USDC on-chain in 400ms |
+| `"Lock ₹2000 for 3 months"` | Creates a time-locked savings position |
+| `"Arjun owes me ₹1,500 — record it"` | Stamps an immutable agreement on Solana via memo |
+| `"Prove this photo is mine"` | SHA-256 hashes and timestamps your file on-chain |
 
-Plain English in. Blockchain action out. Receipt always.
+Plain English in. Solana action out. Receipt always.
 
 ---
 
@@ -56,66 +75,107 @@ After every action, this appears:
 │                                                   │
 │  You sent ₹500 to Priya Sharma                   │
 │                                                   │
-│  Recorded on     Auron · Initia blockchain        │
-│  Time            Apr 21, 2026 — 3:42 PM           │
-│  Can be altered?   No. Ever.                     │
-│  Fee paid        ₹0.02                            │
+│  Recorded on     Solana · Devnet                  │
+│  Time            May 2, 2026 — 3:42 PM            │
+│  Can be altered? No. Ever.                        │
+│  Network fee     < $0.001                         │
+│  Explorer        solscan.io/tx/...                │
 │                                                   │
 │  "A record nobody — not us, not your bank,        │
 │   not any government — can change or delete."     │
 └──────────────────────────────────────────────────┘
 ```
 
-This is not an explanation of blockchain. This is an **experience** of it. For most people, this is the first time blockchain becomes real.
+This is not an explanation of blockchain. This is an **experience** of it.
 
 ---
 
 ## How It Works
 
 ```
-User types natural language
+User types / scans QR / speaks
         ↓
-Claude AI parses intent (with prompt caching — 90% cost savings)
+Claude AI parses intent via SSE streaming (with prompt caching — 90% cost savings)
         ↓
-6-layer security review
+6-layer security review (urgency detection, spend ceiling, scam check)
         ↓
 Plain English confirmation shown to user
         ↓
-CosmWasm smart contract executes on Initia
+Solana transaction built client-side (SOL transfer / SPL token transfer / memo)
+        ↓
+User signs with Phantom / Backpack / Solflare — single click
+        ↓
+Transaction confirmed on Solana (~400ms)
         ↓
 Receipt appears — permanent, immutable, human-readable
 ```
 
 ### The AI Engine
 
-Every message goes through Claude with a structured intent parser:
+Every message goes through Claude with a structured SSE intent stream:
 
 ```
-"send 500 to priya"
-         ↓  Claude (cached system prompt)
+"send 500 rupees to priya"
+         ↓  Claude (cached system prompt, SSE streaming)
 {
-  action:    "transfer",
-  amount:    500,
-  recipient: "priya.init",
-  currency:  "INR"
+  action:    "transfer_usdc",
+  amount_usdc: 6.01,          // ₹500 ÷ ₹83.15 per USDC
+  recipient: "7xKp...mR4",
+  confidence: 0.97
 }
          ↓
-CosmWasm contract → on-chain in 4 seconds
+SPL Token transfer → confirmed on Solana in ~400ms
 ```
 
 ---
 
-## Built on Initia — Natively
+## Built on Solana — Natively
 
-Auron uses **three Initia-native features** that make the invisible blockchain possible:
+Auron uses core Solana primitives and the Jupiter ecosystem:
 
 | Feature | How Auron uses it |
 |---|---|
-| **Auto-signing** | Transactions fire without approval popups. Zero interruption. |
-| **.init Usernames** | Users send to `priya.init`, not `init1x4f9abc...`. Human identity. |
-| **Interwoven Bridge** | Frictionless funding on first login. No manual bridging. |
+| **SOL transfers** | Native Solana system program transfers — instant, near-zero fee |
+| **USDC (SPL Token)** | Circle's USDC on Solana for stable-value payments |
+| **Jupiter Aggregator** | Best-rate swaps with 0.3% platform fee to Auron treasury |
+| **Solana Memo Program** | On-chain agreement and ownership stamps — immutable, human-readable |
+| **Wallet Adapter** | Works with Phantom, Backpack, Solflare — one connect, everything works |
 
-These aren't bolt-ons. They're core to why Auron works.
+---
+
+## Revenue Model
+
+Auron earns on every transaction. Two streams:
+
+### 1. Jupiter Platform Fee (0.3% per swap)
+Every token swap routes through Jupiter with Auron's fee account set as the platform fee recipient. Automatic. On-chain. No invoice required.
+
+```
+User swaps 100 USDC → SOL
+Jupiter routes best path
+0.3 USDC → Auron fee wallet (automatic)
+User gets SOL at best available rate
+```
+
+### 2. FX Spread on UPI Payments
+Market rate: ~₹84.00 per USDC
+Auron rate:   ₹83.15 per USDC (~1% spread)
+
+```
+User pays ₹450 to merchant
+Auron converts at ₹83.15 → 5.41 USDC charged
+Market rate would require 5.36 USDC
+Gap of 0.05 USDC (~₹4.18) = Auron revenue per transaction
+```
+
+No subscriptions. No ads. No data selling. Pure transaction revenue — transparent and on-chain.
+
+| Action | Fee |
+|---|---|
+| Token swap | 0.3% via Jupiter platform fee |
+| UPI QR payment | ~1% FX spread |
+| Agreement stamp | ₹5 flat (memo tx fee) |
+| Ownership proof | ₹2 flat (memo tx fee) |
 
 ---
 
@@ -128,9 +188,9 @@ Most security is designed for experts. Ours is designed for people who've never 
 | **Intent Mirror** | Every action confirmed in plain English before execution. No exceptions. |
 | **Scam Detector** | Urgency language triggers automatic slowdown. Every scam uses urgency. We remove it. |
 | **Smart Limits** | User-set ceiling for instant sends. Above it — extra verification. |
-| **Closed Signing** | Only Auron contracts can trigger the wallet. No external site can ever fire a transaction. |
+| **Closed Signing** | Transactions only execute after explicit wallet confirmation. No auto-sign. |
 | **PIN Protection** | argon2id hashed server-side. Never stored in plaintext. Ever. |
-| **Daily Caps** | On-chain ceiling enforced at contract level — not just the client. |
+| **Daily Caps** | Configurable daily spend ceiling tracked in-session. Blocks cap-busting sequences. |
 
 > *"We designed security for people who've never thought about security. That's harder than designing it for experts."*
 
@@ -140,32 +200,13 @@ Most security is designed for experts. Ours is designed for people who've never 
 
 | | |
 |---|---|
-| Average transaction time | **4 seconds** |
-| Average fee per action | **₹0.02** |
+| Average transaction time | **~400ms** (Solana finality) |
+| Average network fee | **< $0.001** per transaction |
 | Seed phrases required | **0** |
+| Wallets supported | **Phantom, Backpack, Solflare** |
 | Prompt caching savings | **~90% AI cost reduction** |
 | Estimated infra cost at 1,000 users/month | **~$60** |
 | Target market | **8,000,000,000 people** |
-
----
-
-## Revenue Model
-
-Every action generates a fee. Every fee goes directly to Auron. On-chain. Automatic. No intermediaries.
-
-| Action | Fee |
-|---|---|
-| Send money | 1.5% of amount |
-| Save agreement | ₹5 flat |
-| Lock savings | 0.5% of amount |
-| Prove ownership | ₹2 flat |
-
-```
-1,000,000 monthly transactions × ₹0.02 avg fee = ₹20,000/month
-         ↑ this scales linearly with zero marginal cost per transaction
-```
-
-No subscriptions. No ads. No data selling. Pure transaction revenue — transparent and on-chain.
 
 ---
 
@@ -173,58 +214,48 @@ No subscriptions. No ads. No data selling. Pure transaction revenue — transpar
 
 |  | Traditional Banking | Crypto Wallets | **Auron** |
 |---|---|---|---|
-| Setup | Days | Seed phrase | **10 seconds** |
+| Setup | Days | Seed phrase | **Connect Phantom (10 sec)** |
 | Send money | Slow transfer | Wallet address | **"Send ₹500 to Priya"** |
+| Pay merchants | UPI (INR only) | Not possible | **Scan any QR code** |
 | Records | Bank can alter | Technical explorer | **Plain English receipt** |
 | Security | Bank's rules | Your responsibility | **Built-in, automatic** |
 | Target user | Everyone (poorly) | 500M crypto users | **8 billion people** |
 
-**vs. IntentOS** — IntentOS makes DeFi smarter for crypto people. Auron makes blockchain accessible for people who don't know what DeFi is. Different market. 16× larger.
-
----
-
-## The Demo
-
-When presenting Auron:
-
-1. Open Auron on your phone
-2. Say — *"Can I show you something? This takes 60 seconds."*
-3. Hand them the phone
-4. Say — *"Just type what you want to do with money. Like a text message."*
-5. They type. It happens. Receipt appears.
-6. Take the phone back.
-7. Say — **"You just used a blockchain. For the first time. Without knowing it."**
-8. Silence. 3 seconds.
-9. Say — *"8 billion people can do that. That's Auron."*
+**vs. other AI wallet UX projects** — They make DeFi smarter for crypto natives. Auron makes Solana accessible for people who have never heard of Solana. Different market. 16× larger.
 
 ---
 
 ## Tech Stack
 
 ```
-Frontend        Next.js 14 (App Router) + TypeScript
-Styling         Tailwind CSS + Framer Motion
+Frontend        Next.js 15 (App Router) + TypeScript
+Styling         Tailwind CSS v4 + Framer Motion
 Fonts           Playfair Display + DM Sans
-Auth            Supabase (Google OAuth + email/password)
+Auth            Supabase (Google OAuth + email/password + PIN)
 Database        Supabase PostgreSQL (users, sessions, transactions, contacts)
-Blockchain      Initia — CosmWasm smart contracts
-Wallet          @initia/interwovenkit-react
-AI Engine       Anthropic Claude API (claude-sonnet-4-6) with prompt caching
+Blockchain      Solana (devnet → mainnet-beta)
+Wallet          @solana/wallet-adapter-react (Phantom, Backpack, Solflare)
+Token           USDC SPL Token via @solana/spl-token
+Swaps           Jupiter Aggregator API v6 (@jup-ag/api)
+AI Engine       Anthropic Claude API with SSE streaming + prompt caching
+QR Scanning     @zxing/browser — UPI QR deep-link parser
 Security        argon2id PIN hashing, Vercel KV rate limiting, CSP headers
-Mobile          Capacitor — Android APK from the same codebase
+RPC             Helius (enterprise-grade Solana RPC)
 Hosting         Vercel
 ```
 
 ---
 
-## Smart Contracts
+## Solana Programs Used
 
-| Contract | Purpose |
+| Program | Purpose |
 |---|---|
-| `transfer.wasm` | Native token transfer with 1.5% treasury fee |
-| `agreement.wasm` | Dual-signed immutable agreements / IOUs |
-| `timelock.wasm` | Savings vaults with auto-delegation for 12% APY yield |
-| `ownership.wasm` | SHA-256 file hash timestamping — permanent ownership proof |
+| **System Program** | Native SOL transfers |
+| **SPL Token Program** | USDC transfers (Associated Token Accounts) |
+| **Memo Program** | Immutable agreement + ownership stamps on-chain |
+| **Jupiter Aggregator** | Token swaps with platform fee |
+
+All transactions are built client-side with `@solana/web3.js`, signed by the user's wallet, and submitted to Solana via Helius RPC.
 
 ---
 
@@ -232,29 +263,35 @@ Hosting         Vercel
 
 ```
 auron/
-├── frontend/                      # Next.js 14 App Router
+├── frontend/                      # Next.js 15 App Router
 │   ├── app/
 │   │   ├── page.tsx               # Landing page — 7 sections
 │   │   ├── login/page.tsx         # Auth — Google OAuth + email + PIN setup
 │   │   ├── app/page.tsx           # Chat interface (authenticated)
+│   │   ├── error.tsx              # Route error boundary
+│   │   ├── global-error.tsx       # Root layout error boundary
+│   │   ├── not-found.tsx          # Custom 404
 │   │   └── api/
-│   │       ├── parse-intent/      # Claude AI intent engine
+│   │       ├── chat/              # Claude SSE streaming intent engine
 │   │       ├── hash-pin/          # argon2id PIN hashing (server-side)
 │   │       └── auth/callback/     # Supabase OAuth callback handler
 │   ├── components/
-│   │   ├── ChatInterface.tsx      # Main conversational UI
+│   │   ├── ChatInterface.tsx      # Main conversational UI + transaction flow
+│   │   ├── QRScanner.tsx          # UPI QR scanner + FX breakdown
 │   │   ├── ConfirmCard.tsx        # 6-layer security confirmation
-│   │   ├── RevealCard.tsx         # "What just happened" receipt
-│   │   └── VaultPanel.tsx         # Savings vault dashboard
-│   └── lib/
-│       ├── contracts.ts           # CosmWasm message builders
-│       ├── supabase/              # Browser + server Supabase clients
-│       └── security.ts            # Intent scanning + rate limiting
-├── contracts/
-│   ├── transfer/                  # Transfer contract (Rust/CosmWasm)
-│   ├── agreement/                 # Agreement contract
-│   ├── timelock/                  # Timelock + yield contract
-│   └── ownership/                 # Ownership proof contract
+│   │   ├── RevealCard.tsx         # Post-transaction receipt
+│   │   ├── WalletWidget.tsx       # SOL + USDC balances, Solscan link
+│   │   └── TransactionHistory.tsx # On-chain tx history
+│   ├── lib/
+│   │   ├── solana.ts              # RPC, balance fetching, explorer URLs
+│   │   ├── jupiter.ts             # Swap quote + transaction builder
+│   │   ├── contracts.ts           # Solana transaction builders
+│   │   ├── claude.ts              # Intent types + confirm text builder
+│   │   ├── security.ts            # Scam detection + rate limiting
+│   │   └── notifications.ts       # Push notification helpers
+│   └── store/
+│       └── useStore.ts            # Zustand global state
+├── contracts/                     # Legacy CosmWasm (archived — Solana uses native programs)
 └── supabase/
     └── schema.sql                 # Full DB schema + RLS policies
 ```
@@ -267,6 +304,8 @@ auron/
 - Node.js 18+
 - A [Supabase](https://supabase.com) project
 - An [Anthropic](https://console.anthropic.com) API key
+- A [Helius](https://dev.helius.xyz) API key (free tier works)
+- [Phantom](https://phantom.app) wallet browser extension (set to Devnet)
 
 ### Setup
 
@@ -279,44 +318,72 @@ cd auron/frontend
 npm install --legacy-peer-deps
 
 # Configure environment
-cp .env.example .env.local
-# Add: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY, ANTHROPIC_API_KEY
+cp .env.local.example .env.local
+```
 
+Fill in `.env.local`:
+```bash
+NEXT_PUBLIC_SUPABASE_URL=           # Supabase project URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY=      # Supabase anon key
+SUPABASE_SERVICE_ROLE_KEY=          # Supabase service role key
+ANTHROPIC_API_KEY=                  # Claude API key
+NEXT_PUBLIC_SOLANA_NETWORK=devnet
+NEXT_PUBLIC_HELIUS_RPC_URL=https://devnet.helius-rpc.com/?api-key=YOUR_KEY
+NEXT_PUBLIC_FEE_WALLET=             # Your Solana wallet public key (Jupiter fees)
+```
+
+```bash
 # Run the database schema
 # → Supabase Dashboard → SQL Editor → paste supabase/schema.sql → Run
 
-# Start
+# Start dev server
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000)
 
-### Build Android APK
+### Switch to Mainnet
 
 ```bash
-npm run build
-npx cap sync android
-# Open Android Studio → Build → Generate Signed APK
+# In .env.local:
+NEXT_PUBLIC_SOLANA_NETWORK=mainnet-beta
+NEXT_PUBLIC_HELIUS_RPC_URL=https://mainnet.helius-rpc.com/?api-key=YOUR_KEY
 ```
 
 ---
 
-## Why This Wins
+## The Demo
 
-**1. Uses every Initia-native feature organically**
-Auto-signing, .init usernames, Interwoven Bridge — not bolted on, core to the UX.
+When presenting Auron:
 
-**2. Real revenue from day one**
-Fees flow directly to treasury on-chain. No token dependency. No theoretical revenue.
+1. Open Auron on your phone — connect Phantom (devnet)
+2. Say — *"Can I show you something? This takes 30 seconds."*
+3. Point the camera at any UPI QR code (Swiggy, Zomato, any merchant)
+4. Auron reads it — shows merchant name, amount, USDC breakdown, ₹0 fee
+5. Tap **Pay**. Wallet signs. Done.
+6. Take the phone back.
+7. Say — **"You just used Solana to pay a merchant who doesn't know what Solana is."**
+8. Silence. 3 seconds.
+9. Say — *"Every QR code in India is now a Solana payment terminal. That's Auron."*
 
-**3. The demo is unlike anything else in the room**
-Hand a judge your phone. They've used blockchain before you say another word.
+---
+
+## Why This Wins at Colosseum
+
+**1. Real on-chain transactions — not simulations**
+Every action creates a verifiable Solana transaction. Judges can look it up on Solscan right there.
+
+**2. Revenue from day one**
+Jupiter platform fees flow directly to the fee wallet on-chain. No token dependency. No theoretical revenue.
+
+**3. The QR scan demo is unlike anything else in the room**
+Hand a judge your phone. They've paid a merchant on Solana before you say another word.
 
 **4. The target market is 16× larger**
-Every other project targets 500M crypto users. Auron targets 8 billion people.
+Every other project targets 500M crypto users. Auron targets 8 billion people who want to pay for things.
 
-**5. We prove Initia's thesis**
-Initia's pitch is invisible blockchain infrastructure. Auron is the proof of concept.
+**5. We prove Solana's thesis for consumer payments**
+Solana's pitch is fast, cheap, global transactions for everyone. Auron is the proof of concept — real users, real merchants, real money, zero crypto knowledge required.
 
 ---
 
@@ -324,21 +391,21 @@ Initia's pitch is invisible blockchain infrastructure. Auron is the proof of con
 
 Banks took 500 years to reach where they are.
 
-Blockchain can do everything they do — faster, cheaper, permanent, and without anyone's permission — in 4 seconds.
+Solana can do everything they do — faster, cheaper, permanent, and without anyone's permission — in 400 milliseconds.
 
 The only thing missing was an interface that didn't require a computer science degree.
 
 **That's Auron.**
 
-Not a smarter interface for crypto people.
-The first interface for everyone else.
+Not a smarter wallet for crypto people.
+The first wallet for everyone else.
 
 ---
 
 <div align="center">
 
-**Built on Initia. Powered by Claude. Made for everyone.**
+**Built on Solana. Powered by Claude. Made for everyone.**
 
-*© 2026 Auron · Your money, your words.*
+*© 2026 Auron · Scan. Type. Pay.*
 
 </div>
