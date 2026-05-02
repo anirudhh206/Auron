@@ -259,43 +259,6 @@ All transactions are built client-side with `@solana/web3.js`, signed by the use
 
 ---
 
-## Project Structure
-
-```
-auron/
-├── frontend/                      # Next.js 15 App Router
-│   ├── app/
-│   │   ├── page.tsx               # Landing page — 7 sections
-│   │   ├── login/page.tsx         # Auth — Google OAuth + email + PIN setup
-│   │   ├── app/page.tsx           # Chat interface (authenticated)
-│   │   ├── error.tsx              # Route error boundary
-│   │   ├── global-error.tsx       # Root layout error boundary
-│   │   ├── not-found.tsx          # Custom 404
-│   │   └── api/
-│   │       ├── chat/              # Claude SSE streaming intent engine
-│   │       ├── hash-pin/          # argon2id PIN hashing (server-side)
-│   │       └── auth/callback/     # Supabase OAuth callback handler
-│   ├── components/
-│   │   ├── ChatInterface.tsx      # Main conversational UI + transaction flow
-│   │   ├── QRScanner.tsx          # UPI QR scanner + FX breakdown
-│   │   ├── ConfirmCard.tsx        # 6-layer security confirmation
-│   │   ├── RevealCard.tsx         # Post-transaction receipt
-│   │   ├── WalletWidget.tsx       # SOL + USDC balances, Solscan link
-│   │   └── TransactionHistory.tsx # On-chain tx history
-│   ├── lib/
-│   │   ├── solana.ts              # RPC, balance fetching, explorer URLs
-│   │   ├── jupiter.ts             # Swap quote + transaction builder
-│   │   ├── contracts.ts           # Solana transaction builders
-│   │   ├── claude.ts              # Intent types + confirm text builder
-│   │   ├── security.ts            # Scam detection + rate limiting
-│   │   └── notifications.ts       # Push notification helpers
-│   └── store/
-│       └── useStore.ts            # Zustand global state
-├── contracts/                     # Legacy CosmWasm (archived — Solana uses native programs)
-└── supabase/
-    └── schema.sql                 # Full DB schema + RLS policies
-```
-
 ---
 
 ## Getting Started
