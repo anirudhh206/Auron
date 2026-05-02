@@ -35,7 +35,7 @@ It feels like Google Pay. It runs on Solana.
 
 ---
 
-## The Killer Feature — Scan Any UPI QR Code
+## Scan Any UPI QR Code and Pay to any merchant
 
 India has 300 million+ merchants accepting UPI QR payments via Google Pay, PhonePe, Paytm. Every single one of them already has a QR code. Auron makes every one of those QR codes a crypto payment terminal — **without the merchant changing anything.**
 
