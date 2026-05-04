@@ -1,0 +1,31 @@
+# ── Secrets (NEVER commit these) ──────────────────────────────
+scripts/.env.deploy
+scripts/deployed_addresses.json
+frontend/.env.local
+**/.env
+**/.env.*
+!**/.env.example
+.claude/
+
+# ── Build artifacts ────────────────────────────────────────────
+artifacts/
+contracts/**/target/
+frontend/.next/
+frontend/node_modules/
+scripts/node_modules/
+
+# ── OS files ───────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Logs ──────────────────────────────────────────────────────
+*.log
+npm-debug.log*
+
+# ── TypeScript ────────────────────────────────────────────────
+*.tsbuildinfo
+
+# ── Markdown (except README) ────────────────────────────────
+*.md
+!README.md
+!README*.md
