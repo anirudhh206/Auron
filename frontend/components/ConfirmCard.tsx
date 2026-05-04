@@ -80,10 +80,15 @@ export default function ConfirmCard({
 
   const actionIcon: Record<string, string> = {
     transfer: "💸",
+    transfer_sol: "◎",
+    transfer_usdc: "💵",
+    upi_payment: "🇮🇳",
     stamp_agreement: "🤝",
     lock_savings: "🔒",
     stamp_ownership: "📎",
   };
+
+  const isUPIPayment = action.action === "upi_payment";
 
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-4">
@@ -117,20 +122,75 @@ export default function ConfirmCard({
           </div>
         )}
 
-        {/* Amount detail */}
-        {action.amount && (
-          <div className="bg-gray-800 rounded-xl p-4 grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <p className="text-gray-400 text-xs">Amount</p>
-              <p className="text-white font-semibold">{action.amount.toLocaleString()}</p>
+        {/* ── UPI Payment breakdown ── */}
+        {isUPIPayment ? (
+          <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(201,168,76,0.2)" }}>
+            {/* Header */}
+            <div className="px-4 py-3" style={{ background: "rgba(201,168,76,0.07)", borderBottom: "1px solid rgba(201,168,76,0.12)" }}>
+              <p className="text-xs font-bold tracking-widest uppercase" style={{ color: "rgba(201,168,76,0.8)" }}>
+                UPI Payment · Auron Off-Ramp
+              </p>
             </div>
-            {action.recipient && (
-              <div>
-                <p className="text-gray-400 text-xs">To</p>
-                <p className="text-white font-semibold">{action.recipient}</p>
+            {/* Rows */}
+            <div className="px-4 py-3 space-y-3" style={{ background: "rgba(255,255,255,0.02)" }}>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-gray-400">Merchant</span>
+                <span className="text-sm font-semibold text-white">
+                  {action.merchant_name ?? action.upi_id?.split("@")[0] ?? "—"}
+                </span>
               </div>
-            )}
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-gray-400">UPI ID</span>
+                <span className="text-xs font-mono text-gray-300">{action.upi_id ?? "—"}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-gray-400">You spend</span>
+                <span className="text-sm font-bold text-white">
+                  {action.amount_usdc != null ? `${action.amount_usdc.toFixed(4)} USDC` : "—"}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-xs text-gray-400">Merchant gets</span>
+                <span className="text-sm font-bold" style={{ color: "#10b981" }}>
+                  {action.inr_amount != null
+                    ? `₹${action.inr_amount.toLocaleString("en-IN")}`
+                    : "—"}
+                </span>
+              </div>
+              {/* Zero fee badge */}
+              <div className="flex justify-between items-center rounded-lg px-3 py-2"
+                style={{ background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.18)" }}>
+                <span className="text-xs font-medium text-emerald-400">Your fee</span>
+                <span className="text-xs font-black text-emerald-400">₹0</span>
+              </div>
+            </div>
           </div>
+        ) : (
+          /* ── Generic amount + recipient detail ── */
+          (action.amount != null || action.amount_usdc != null || action.recipient) && (
+            <div className="bg-gray-800 rounded-xl p-4 grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <p className="text-gray-400 text-xs">Amount</p>
+                {action.amount_usdc != null ? (
+                  <p className="text-white font-semibold">{action.amount_usdc.toFixed(2)} USDC</p>
+                ) : action.amount != null ? (
+                  <p className="text-white font-semibold">
+                    {action.action === "transfer_sol" ? `${action.amount} SOL` : `${action.amount.toLocaleString()}`}
+                  </p>
+                ) : null}
+              </div>
+              {action.recipient && (
+                <div className="min-w-0">
+                  <p className="text-gray-400 text-xs">To</p>
+                  <p className="text-white font-semibold font-mono text-xs truncate">
+                    {action.recipient.length > 16
+                      ? `${action.recipient.slice(0, 6)}…${action.recipient.slice(-6)}`
+                      : action.recipient}
+                  </p>
+                </div>
+              )}
+            </div>
+          )
         )}
 
         {/* Action buttons */}
@@ -165,7 +225,7 @@ export default function ConfirmCard({
               disabled={buttonBlocked}
               className="flex-1 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-semibold transition disabled:opacity-40"
             >
-              {cooldown > 0 ? `Wait ${cooldown}s` : confirmLabel(isExecuting)}
+              {cooldown > 0 ? `Wait ${cooldown}s` : confirmLabel(isExecuting, isUPIPayment)}
             </button>
           )}
         </div>
@@ -174,7 +234,7 @@ export default function ConfirmCard({
   );
 }
 
-function confirmLabel(executing: boolean): string {
-  if (executing) return "Sending…";
-  return "Yes, confirm";
+function confirmLabel(executing: boolean, isUPI = false): string {
+  if (executing) return isUPI ? "Processing payment…" : "Sending…";
+  return isUPI ? "Pay now" : "Yes, confirm";
 }

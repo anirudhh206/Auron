@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, type RefObject, type ChangeEvent } from "react";
-import { useInterwovenKit } from "@initia/interwovenkit-react";
+import { useWallet } from "@solana/wallet-adapter-react";
 import { useStore } from "@/store/useStore";
 import { cn, shortAddr } from "@/lib/utils";
 import { ChevronRight, Lock, Zap, FileText, DollarSign, Check, AlertCircle } from "lucide-react";
@@ -9,7 +9,8 @@ import { ChevronRight, Lock, Zap, FileText, DollarSign, Check, AlertCircle } fro
 type Step = "welcome" | "pin" | "ceiling" | "features" | "complete";
 
 export default function OnboardingFlow() {
-  const { address, username } = useInterwovenKit();
+  const { publicKey } = useWallet();
+  const address = publicKey?.toString() ?? null;
   const { setPrefs } = useStore();
 
   const [step, setStep] = useState<Step>("welcome");
@@ -22,7 +23,7 @@ export default function OnboardingFlow() {
   const pinRef = useRef<HTMLInputElement>(null);
   const confirmRef = useRef<HTMLInputElement>(null);
 
-  const displayName = username || shortAddr(address);
+  const displayName = address ? shortAddr(address) : "Wallet connected";
 
   // ── Step 1: PIN validation & hashing (SERVER-SIDE) ─────────
   async function validateAndHashPin(pinValue: string): Promise<string | null> {
@@ -223,8 +224,8 @@ function PinStep({
   readonly onPinChange: (v: string) => void;
   readonly onConfirmChange: (v: string) => void;
   readonly onSubmit: () => void;
-  readonly pinRef: RefObject<HTMLInputElement>;
-  readonly confirmRef: RefObject<HTMLInputElement>;
+  readonly pinRef: RefObject<HTMLInputElement | null>;
+  readonly confirmRef: RefObject<HTMLInputElement | null>;
 }) {
   const handlePinInput = (e: ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value.replaceAll(/\D/g, "").slice(0, 4);

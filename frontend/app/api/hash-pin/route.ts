@@ -43,8 +43,7 @@ export async function POST(req: NextRequest) {
       memoryCost: 65536,    // 64 MB
       timeCost: 3,          // 3 iterations
       parallelism: 4,       // 4 parallel threads
-      hashLen: 32,          // 32 bytes output
-      saltLength: 16,       // 16 bytes random salt
+      hashLength: 32,       // 32 bytes output
     });
 
     // ── Return hash (never the plain PIN) ──────────────────────

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { CheckCircle, ExternalLink, Copy, Check, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getTxExplorerUrl } from "@/lib/solana";
 
 interface RevealCardProps {
   txHash: string;
@@ -10,28 +11,29 @@ interface RevealCardProps {
   onClose: () => void;
 }
 
-// Initia testnet explorer base URL
-const EXPLORER_BASE = "https://scan.testnet.initia.xyz/auron-1/txs";
-
 export default function RevealCard({ txHash, confirmText, onClose }: RevealCardProps) {
-  const [copied, setCopied]     = useState(false);
-  const [visible, setVisible]   = useState(false);
+  const [copied, setCopied]   = useState(false);
+  const [visible, setVisible] = useState(false);
 
-  // Animate in on mount
+  const txTime = new Date().toLocaleString("en-IN", {
+    month: "short", day: "numeric", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+
   useEffect(() => {
     const t = setTimeout(() => setVisible(true), 30);
     return () => clearTimeout(t);
   }, []);
 
-  // Auto-close after 12 seconds
   useEffect(() => {
-    const t = setTimeout(() => handleClose(), 12_000);
+    const t = setTimeout(() => handleClose(), 18_000);
     return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function handleClose() {
     setVisible(false);
-    setTimeout(onClose, 250);
+    setTimeout(onClose, 300);
   }
 
   function copyHash() {
@@ -47,77 +49,104 @@ export default function RevealCard({ txHash, confirmText, onClose }: RevealCardP
   return (
     <button
       type="button"
-      aria-label="Close"
+      aria-label="Close reveal card"
       className={cn(
         "fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4",
-        "bg-black/60 backdrop-blur-sm cursor-default",
-        "transition-opacity duration-250",
+        "bg-black/70 backdrop-blur-md cursor-default",
+        "transition-opacity duration-300",
         visible ? "opacity-100" : "opacity-0"
       )}
       onClick={(e) => e.target === e.currentTarget && handleClose()}
     >
       <div
         className={cn(
-          "w-full max-w-md rounded-2xl overflow-hidden shadow-2xl",
-          "border border-white/10",
-          "transition-transform duration-250",
-          visible ? "translate-y-0" : "translate-y-6"
+          "w-full max-w-md rounded-2xl overflow-hidden",
+          "transition-all duration-300 ease-out",
+          visible ? "translate-y-0 scale-100" : "translate-y-8 scale-95"
         )}
+        style={{
+          background: "#12121A",
+          border: "1px solid rgba(201,168,76,0.4)",
+          boxShadow: "0 0 0 1px rgba(201,168,76,0.1), 0 32px 64px rgba(0,0,0,0.6), 0 0 80px rgba(201,168,76,0.08)",
+        }}
       >
-        {/* ── Green success banner ──────────────────────────────── */}
-        <div className="bg-gradient-to-r from-emerald-600 to-teal-600 px-6 py-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
-                <CheckCircle size={22} className="text-white" />
-              </div>
-              <div>
-                <p className="text-white font-bold text-base leading-tight">Done!</p>
-                <p className="text-emerald-100 text-xs mt-0.5">Confirmed on-chain</p>
-              </div>
-            </div>
-            <button
-              type="button"
-              aria-label="Close"
-              onClick={handleClose}
-              className="p-1.5 rounded-lg hover:bg-white/20 text-white/70 hover:text-white transition-colors"
+        {/* ── Header ───────────────────────────────────────────── */}
+        <div
+          className="px-6 py-5 flex items-center justify-between"
+          style={{ borderBottom: "1px solid rgba(201,168,76,0.15)" }}
+        >
+          <div className="flex items-center gap-3">
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+              style={{ background: "rgba(29,158,117,0.15)", border: "1px solid rgba(29,158,117,0.3)" }}
             >
-              <X size={16} />
-            </button>
+              <CheckCircle size={18} style={{ color: "#1D9E75" }} />
+            </div>
+            <div>
+              <p className="font-display font-bold text-base" style={{ color: "#F0EEE8" }}>
+                What just happened
+              </p>
+              <p className="text-xs mt-0.5" style={{ color: "#8A8A9A" }}>Confirmed on Solana</p>
+            </div>
           </div>
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={handleClose}
+            className="p-1.5 rounded-lg transition-colors"
+            style={{ color: "#4A4A5A" }}
+            onMouseEnter={e => (e.currentTarget.style.color = "#F0EEE8")}
+            onMouseLeave={e => (e.currentTarget.style.color = "#4A4A5A")}
+          >
+            <X size={16} />
+          </button>
         </div>
 
-        {/* ── Body ─────────────────────────────────────────────── */}
-        <div className="bg-[#161b27] px-6 py-5 space-y-5">
+        {/* ── Transaction summary ───────────────────────────────── */}
+        <div className="px-6 py-5 space-y-4">
 
           {/* What happened */}
-          <div>
-            <p className="text-gray-400 text-xs uppercase tracking-widest font-medium mb-1.5">
+          <div
+            className="rounded-xl p-4"
+            style={{ background: "rgba(26,26,38,0.8)", border: "1px solid rgba(201,168,76,0.12)" }}
+          >
+            <p className="text-xs uppercase tracking-widest font-medium mb-2" style={{ color: "#4A4A5A" }}>
               Transaction
             </p>
-            <p className="text-white font-medium text-sm leading-relaxed">
+            <p className="text-base font-medium leading-relaxed" style={{ color: "#F0EEE8" }}>
               {confirmText}
             </p>
           </div>
 
+          {/* Details grid */}
+          <div className="space-y-3">
+            <DetailRow label="Recorded on" value="Auron · Solana blockchain" />
+            <DetailRow label="Time" value={txTime} />
+            <DetailRow
+              label="Can be altered?"
+              value="No. Ever."
+              valueStyle={{ color: "#1D9E75", fontWeight: 600 }}
+            />
+            <DetailRow label="Network fee" value="< $0.001" />
+          </div>
+
           {/* TX Hash */}
           <div>
-            <p className="text-gray-400 text-xs uppercase tracking-widest font-medium mb-1.5">
+            <p className="text-xs uppercase tracking-widest font-medium mb-2" style={{ color: "#4A4A5A" }}>
               Transaction Hash
             </p>
-            <div className="flex items-center gap-2 bg-[#0f1117] rounded-xl px-3 py-2.5 border border-white/6">
-              <span className="text-gray-300 text-xs font-mono flex-1 truncate">
+            <div
+              className="flex items-center gap-2 rounded-xl px-3 py-2.5"
+              style={{ background: "#0A0A0F", border: "1px solid #2A2A3A" }}
+            >
+              <span className="font-mono text-xs flex-1 truncate" style={{ color: "#8A8A9A" }}>
                 {shortHash}
               </span>
               <button
                 type="button"
                 onClick={copyHash}
-                className={cn(
-                  "p-1.5 rounded-lg transition-colors shrink-0",
-                  copied
-                    ? "text-emerald-400 bg-emerald-400/10"
-                    : "text-gray-500 hover:text-gray-300 hover:bg-white/6"
-                )}
+                className="p-1.5 rounded-lg transition-colors shrink-0"
+                style={{ color: copied ? "#1D9E75" : "#4A4A5A" }}
                 title="Copy full hash"
               >
                 {copied ? <Check size={13} /> : <Copy size={13} />}
@@ -125,43 +154,74 @@ export default function RevealCard({ txHash, confirmText, onClose }: RevealCardP
             </div>
           </div>
 
+          {/* Blockchain education */}
+          <div
+            className="rounded-xl p-4 gold-border-left"
+            style={{ background: "rgba(201,168,76,0.04)" }}
+          >
+            <p className="text-sm leading-relaxed italic" style={{ color: "#8A8A9A" }}>
+              "This is what blockchain means. A record that nobody — not us, not your bank,
+              not any government — can change or delete."
+            </p>
+          </div>
+
           {/* Actions */}
           <div className="flex gap-3 pt-1">
             <a
-              href={`${EXPLORER_BASE}/${txHash}`}
+              href={getTxExplorerUrl(txHash)}
               target="_blank"
               rel="noopener noreferrer"
-              className={cn(
-                "flex-1 flex items-center justify-center gap-2",
-                "py-2.5 rounded-xl text-sm font-medium",
-                "bg-white/6 hover:bg-white/10 text-gray-200",
-                "border border-white/8 hover:border-white/16",
-                "transition-all duration-150"
-              )}
+              className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium transition-all duration-150"
+              style={{
+                background: "rgba(26,26,38,0.8)",
+                border: "1px solid #2A2A3A",
+                color: "#8A8A9A",
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.borderColor = "rgba(201,168,76,0.3)";
+                e.currentTarget.style.color = "#F0EEE8";
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.borderColor = "#2A2A3A";
+                e.currentTarget.style.color = "#8A8A9A";
+              }}
             >
               <ExternalLink size={14} />
               View on Explorer
             </a>
-
             <button
               type="button"
               onClick={handleClose}
-              className={cn(
-                "flex-1 py-2.5 rounded-xl text-sm font-semibold",
-                "bg-emerald-600 hover:bg-emerald-500 text-white",
-                "transition-all duration-150 active:scale-95"
-              )}
+              className="flex-1 py-3 rounded-xl text-sm font-bold transition-all duration-150 btn-gold"
             >
               Continue
             </button>
           </div>
 
-          {/* Auto-close note */}
-          <p className="text-center text-gray-600 text-[10px]">
-            This will close automatically in a few seconds
+          <p className="text-center text-xs" style={{ color: "#2A2A3A" }}>
+            Closes automatically in a few seconds
           </p>
         </div>
       </div>
     </button>
+  );
+}
+
+function DetailRow({
+  label,
+  value,
+  valueStyle,
+}: {
+  label: string;
+  value: string;
+  valueStyle?: React.CSSProperties;
+}) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <span className="text-sm shrink-0" style={{ color: "#4A4A5A" }}>{label}</span>
+      <span className="text-sm text-right" style={{ color: "#8A8A9A", ...valueStyle }}>
+        {value}
+      </span>
+    </div>
   );
 }

@@ -1,27 +1,38 @@
 "use client";
 
 import { useState, useRef, useEffect, type ElementType } from "react";
-import { useInterwovenKit, usePortfolio } from "@initia/interwovenkit-react";
-import { Wallet, ChevronDown, Copy, ArrowDownToLine, Check } from "lucide-react";
-import { cn, shortAddr, formatCless } from "@/lib/utils";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { useWalletModal } from "@solana/wallet-adapter-react-ui";
+import { useQuery } from "@tanstack/react-query";
+import { Wallet, ChevronDown, Copy, ExternalLink, Check, LogOut } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { shortAddr, getSOLBalance, getUSDCBalance } from "@/lib/solana";
 
 export default function WalletWidget() {
-  const {
-    address,
-    username,
-    isConnected,
-    openConnect,
-    openWallet,
-    openDeposit,
-  } = useInterwovenKit();
-
-  const { totalValue, assetGroups } = usePortfolio();
+  const { publicKey, connected, disconnect } = useWallet();
+  const { setVisible } = useWalletModal();
+  const address = publicKey?.toString() ?? null;
 
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  // Close dropdown when clicking outside
+  const { data: solBalance = 0 } = useQuery({
+    queryKey: ["sol-balance", address],
+    queryFn: () => getSOLBalance(address!),
+    enabled: !!address,
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+
+  const { data: usdcBalance = 0 } = useQuery({
+    queryKey: ["usdc-balance", address],
+    queryFn: () => getUSDCBalance(address!),
+    enabled: !!address,
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) {
@@ -32,23 +43,6 @@ export default function WalletWidget() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  // Get CLESS balance from portfolio
-  const clessBalance = (() => {
-    for (const group of assetGroups ?? []) {
-      for (const asset of group.assets ?? []) {
-        if (
-          asset.denom === "ucless" ||
-          asset.symbol?.toLowerCase() === "cless"
-        ) {
-          return formatCless(asset.amount ?? 0);
-        }
-      }
-    }
-    return "0";
-  })();
-
-  const displayName = username ?? shortAddr(address);
-
   function copyAddress() {
     if (!address) return;
     navigator.clipboard.writeText(address);
@@ -56,16 +50,22 @@ export default function WalletWidget() {
     setTimeout(() => setCopied(false), 2000);
   }
 
-  function handleDeposit() {
+  function openSolscan() {
+    if (!address) return;
+    window.open(`https://solscan.io/account/${address}`, "_blank", "noopener,noreferrer");
     setOpen(false);
-    openDeposit({ denoms: ["ucless"] });
+  }
+
+  async function handleDisconnect() {
+    setOpen(false);
+    await disconnect();
   }
 
   // ── Not connected ────────────────────────────────────────────────
-  if (!isConnected) {
+  if (!connected) {
     return (
       <button
-        onClick={openConnect}
+        onClick={() => setVisible(true)}
         className={cn(
           "flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold",
           "bg-violet-600 hover:bg-violet-500 text-white",
@@ -93,10 +93,12 @@ export default function WalletWidget() {
         {/* Green dot */}
         <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
 
-        {/* Name + balance */}
+        {/* Address + balances */}
         <span className="flex flex-col items-start leading-none">
-          <span className="text-white font-semibold text-xs">{displayName}</span>
-          <span className="text-gray-400 text-[10px] mt-0.5">{clessBalance} CLESS</span>
+          <span className="text-white font-semibold text-xs">{shortAddr(address!)}</span>
+          <span className="text-gray-400 text-[10px] mt-0.5">
+            {solBalance.toFixed(3)} SOL · {usdcBalance.toFixed(2)} USDC
+          </span>
         </span>
 
         <ChevronDown
@@ -112,22 +114,28 @@ export default function WalletWidget() {
       {open && (
         <div
           className={cn(
-            "absolute right-0 top-full mt-2 w-56 rounded-2xl z-50",
+            "absolute right-0 top-full mt-2 w-64 rounded-2xl z-50",
             "bg-[#161b27] border border-white/10 shadow-2xl",
             "animate-slide-up overflow-hidden"
           )}
         >
           {/* Header */}
           <div className="px-4 py-3 border-b border-white/6">
-            <p className="text-white font-semibold text-sm">{displayName}</p>
-            <p className="text-gray-400 text-xs mt-0.5 font-mono">
-              {shortAddr(address)}
-            </p>
-            {totalValue > 0 && (
-              <p className="text-violet-300 text-xs mt-1">
-                ≈ ${totalValue.toFixed(2)} total
-              </p>
-            )}
+            <p className="text-white font-semibold text-sm font-mono">{shortAddr(address!)}</p>
+            <p className="text-gray-500 text-[10px] mt-0.5 font-mono truncate">{address}</p>
+
+            {/* SOL / USDC balance row */}
+            <div className="flex items-center gap-4 mt-2.5">
+              <div>
+                <p className="text-white text-sm font-bold">{solBalance.toFixed(4)}</p>
+                <p className="text-gray-500 text-[10px]">SOL</p>
+              </div>
+              <div className="w-px h-6 bg-white/8" />
+              <div>
+                <p className="text-white text-sm font-bold">{usdcBalance.toFixed(2)}</p>
+                <p className="text-gray-500 text-[10px]">USDC</p>
+              </div>
+            </div>
           </div>
 
           {/* Actions */}
@@ -139,14 +147,15 @@ export default function WalletWidget() {
               accent={copied}
             />
             <DropdownItem
-              icon={ArrowDownToLine}
-              label="Deposit funds"
-              onClick={handleDeposit}
+              icon={ExternalLink}
+              label="View on Solscan"
+              onClick={openSolscan}
             />
             <DropdownItem
-              icon={Wallet}
-              label="Wallet details"
-              onClick={() => { setOpen(false); openWallet(); }}
+              icon={LogOut}
+              label="Disconnect"
+              onClick={handleDisconnect}
+              danger
             />
           </div>
         </div>

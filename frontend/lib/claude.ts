@@ -7,75 +7,43 @@ const client = new Anthropic({
 // ─── Output schema ────────────────────────────────────────────────────────────
 export type ActionType =
   | "transfer"
+  | "transfer_sol"
+  | "transfer_usdc"
+  | "upi_payment"      // Pay Indian merchant via UPI — USDC → Auron treasury → OnMeta → INR to merchant
   | "stamp_agreement"
   | "lock_savings"
-  | "stamp_ownership"
-  | "claim_yield";
+  | "stamp_ownership";
 
 export interface ParsedAction {
   action: ActionType | null;
   amount: number | null;
+  amount_usdc: number | null;   // USDC-denominated amount (from ₹ conversion or explicit USDC)
   recipient: string | null;
+  // ── UPI payment fields (populated when action === "upi_payment") ──────────
+  upi_id: string | null;        // merchant's UPI ID  e.g. "merchant@paytm"
+  merchant_name: string | null; // merchant display name
+  inr_amount: number | null;    // INR amount merchant will receive
+  // ─────────────────────────────────────────────────────────────────────────
   note: string | null;
   duration_days: number | null;
   file_hash: string | null;
   file_name: string | null;
   description: string | null;
-  vault_id: string | null;
+  label: string | null;         // Savings lock label
+  vault_id: string | null;      // Legacy — kept for persisted data compatibility
   confidence: number;
   ambiguity: string | null;
 }
 
-// ─── Deterministic system prompt (cached for cost reduction) ──────────────────
-// This prompt never changes — perfect for prompt caching (5-minute TTL).
-// By caching this 2KB text, we save 90% on API costs after the first call.
-const SYSTEM_PROMPT = `You are a blockchain action parser for Auron — a conversational crypto app.
-Your ONLY job is to extract the user's intent and return ONLY valid JSON. Never add explanation, markdown, or extra text.
-
-Output schema (return exactly this shape):
-{
-  "action": "transfer" | "stamp_agreement" | "lock_savings" | "stamp_ownership" | "claim_yield" | null,
-  "amount": number | null,
-  "recipient": "username.init" | null,
-  "note": string | null,
-  "duration_days": number | null,
-  "file_hash": string | null,
-  "file_name": string | null,
-  "description": string | null,
-  "vault_id": string | null,
-  "confidence": 0.0 to 1.0,
-  "ambiguity": string | null
+// ─── System prompt — loaded from env var (never committed to git) ─────────────
+// Store the actual prompt in CLAUDE_SYSTEM_PROMPT env var:
+//   • Locally  → .env.local
+//   • Vercel   → Project Settings → Environment Variables
+// The file you are reading has no secret content — safe to deploy.
+if (!process.env.CLAUDE_SYSTEM_PROMPT) {
+  console.warn("[claude] CLAUDE_SYSTEM_PROMPT env var is not set. parseIntent will return null actions.");
 }
-
-Action rules:
-- "transfer": user wants to send money/tokens to someone
-- "stamp_agreement": user wants to record a deal, IOU, agreement, or promise
-- "lock_savings": user wants to save, lock, or freeze funds for a future date
-- "stamp_ownership": user wants to prove they own/created a file, photo, document
-- "claim_yield": user wants to claim earned interest/yield from a savings vault
-
-Amount rules:
-- Convert currency names: Rs/₹ = rupees (keep numeric value), $ = dollars (keep numeric value)
-- NEVER guess amounts. If unclear, set to null and ask via ambiguity.
-- duration_days: convert "3 months" = 90, "1 week" = 7, "1 year" = 365
-
-Confidence rules:
-- 0.9+ : crystal clear intent with all required fields
-- 0.7-0.89: intent clear but missing some detail
-- < 0.7 : ambiguous — set ambiguity to a plain English clarification question
-- If confidence < 0.8, ALWAYS set ambiguity field with a short clarifying question
-
-Recipient rules:
-- If user mentions a name (e.g. "Priya"), set recipient to "priya.init" (lowercase.init)
-- If user provides a full address, use it as-is
-
-Examples:
-User: "Send Rs500 to Priya" → {"action":"transfer","amount":500,"recipient":"priya.init","note":null,"duration_days":null,"file_hash":null,"file_name":null,"description":null,"confidence":0.95,"ambiguity":null}
-User: "Arjun owes me 2000" → {"action":"stamp_agreement","amount":2000,"recipient":"arjun.init","note":null,"duration_days":null,"file_hash":null,"file_name":null,"description":"Arjun owes 2000","confidence":0.9,"ambiguity":null}
-User: "Lock 1000 for 3 months" → {"action":"lock_savings","amount":1000,"recipient":null,"note":null,"duration_days":90,"file_hash":null,"file_name":null,"description":"3 month savings lock","confidence":0.95,"ambiguity":null}
-User: "Transfer money" → {"action":"transfer","amount":null,"recipient":null,"note":null,"duration_days":null,"file_hash":null,"file_name":null,"description":null,"vault_id":null,"confidence":0.5,"ambiguity":"How much would you like to send, and to whom?"}
-User: "Claim my yield" → {"action":"claim_yield","amount":null,"recipient":null,"note":null,"duration_days":null,"file_hash":null,"file_name":null,"description":null,"vault_id":null,"confidence":0.9,"ambiguity":null}
-User: "Claim yield from vault-3" → {"action":"claim_yield","amount":null,"recipient":null,"note":null,"duration_days":null,"file_hash":null,"file_name":null,"description":null,"vault_id":"vault-3","confidence":0.98,"ambiguity":null}`;
+const SYSTEM_PROMPT = process.env.CLAUDE_SYSTEM_PROMPT ?? "";
 
 /**
  * parseIntent — Parse user's plain English intent into a structured action.
@@ -147,21 +115,40 @@ export async function parseIntent(message: string): Promise<ParsedAction> {
  * buildConfirmText — Generate human-readable confirmation message from parsed action
  */
 export function buildConfirmText(action: ParsedAction): string {
+  const fmtSOL = (n: number | null) => (n != null ? `${n} SOL` : "SOL");
+  const fmtUSDC = (n: number | null) => (n != null ? `${n.toFixed(2)} USDC` : "USDC");
+  const short = (r: string | null) => {
+    if (!r) return "recipient";
+    return r.length > 12 ? `${r.slice(0, 4)}…${r.slice(-4)}` : r;
+  };
+
   switch (action.action) {
-    case "transfer":
-      return `Send ${action.amount} to ${action.recipient ?? "recipient"}${
-        action.note ? ` with note: "${action.note}"` : ""
-      }.`;
+    case "transfer_sol":
+      return `Send ${fmtSOL(action.amount)} to ${short(action.recipient)}${action.note ? ` — "${action.note}"` : ""}.`;
+    case "transfer_usdc":
+    case "transfer": {
+      const usdc = action.amount_usdc ?? action.amount;
+      return `Send ${fmtUSDC(usdc)} to ${short(action.recipient)}${action.note ? ` — "${action.note}"` : ""}.`;
+    }
     case "stamp_agreement":
-      return `Record an agreement: ${action.description ?? `${action.recipient} owes ${action.amount}`}.`;
-    case "lock_savings":
-      return `Lock ${action.amount} for ${action.duration_days} days (until ${
-        new Date(Date.now() + (action.duration_days ?? 0) * 86400 * 1000).toLocaleDateString()
-      }).`;
+      return `Record on-chain: ${action.description ?? `${action.recipient} owes ${fmtUSDC(action.amount_usdc ?? action.amount)}`}.`;
+    case "lock_savings": {
+      const days = action.duration_days ?? 0;
+      const until = new Date(Date.now() + days * 86_400_000).toLocaleDateString("en-IN", {
+        day: "numeric", month: "short", year: "numeric",
+      });
+      return `Lock ${fmtUSDC(action.amount_usdc ?? action.amount)} for ${days} days — unlocks ${until}.`;
+    }
+    case "upi_payment": {
+      const inr = action.inr_amount;
+      const usdc = action.amount_usdc;
+      const merchant = action.merchant_name || action.upi_id?.split("@")[0] || "merchant";
+      const inrStr = inr != null ? `₹${inr.toLocaleString("en-IN")}` : "amount";
+      const usdcStr = usdc != null ? ` · spend ${usdc.toFixed(4)} USDC` : "";
+      return `Pay ${inrStr} to ${merchant} via UPI${usdcStr}.`;
+    }
     case "stamp_ownership":
-      return `Prove you own "${action.file_name ?? "this file"}" — recorded permanently on-chain.`;
-    case "claim_yield":
-      return `Claim earned yield${action.vault_id ? ` from ${action.vault_id}` : " from your savings vault"}.`;
+      return `Prove ownership of "${action.file_name ?? "this file"}" — recorded permanently on-chain.`;
     default:
       return "Confirm this action.";
   }

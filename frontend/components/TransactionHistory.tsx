@@ -3,9 +3,8 @@
 import { useEffect, useState, type ElementType } from "react";
 import { X, ExternalLink, ArrowUpRight, FileText, Lock, FileCheck, Inbox } from "lucide-react";
 import { useStore, CompletedTransaction } from "@/store/useStore";
-import { cn, shortAddr, formatTimestamp, formatCless } from "@/lib/utils";
-
-const EXPLORER_BASE = "https://scan.testnet.initia.xyz/auron-1/txs";
+import { cn, shortAddr, formatTimestamp } from "@/lib/utils";
+import { getTxExplorerUrl } from "@/lib/solana";
 
 const ACTION_META: Record<
   string,
@@ -13,6 +12,18 @@ const ACTION_META: Record<
 > = {
   transfer: {
     label: "Sent",
+    icon: ArrowUpRight,
+    color: "text-violet-400",
+    bg: "bg-violet-500/10",
+  },
+  transfer_sol: {
+    label: "Sent SOL",
+    icon: ArrowUpRight,
+    color: "text-violet-400",
+    bg: "bg-violet-500/10",
+  },
+  transfer_usdc: {
+    label: "Sent USDC",
     icon: ArrowUpRight,
     color: "text-violet-400",
     bg: "bg-violet-500/10",
@@ -119,13 +130,26 @@ function TxRow({ tx }: { readonly tx: CompletedTransaction }) {
   const Icon = meta.icon;
 
   const detail = (() => {
+    const recipient = tx.action.recipient
+      ? (tx.action.recipient.length > 12
+          ? `${tx.action.recipient.slice(0, 4)}…${tx.action.recipient.slice(-4)}`
+          : tx.action.recipient)
+      : "";
+
     switch (tx.action.action) {
-      case "transfer":
-        return `${formatCless((tx.action.amount ?? 0) * 1_000_000)} CLESS → ${tx.action.recipient ?? ""}`;
+      case "transfer_sol":
+        return `${tx.action.amount ?? 0} SOL → ${recipient}`;
+      case "transfer_usdc":
+      case "transfer": {
+        const usdc = tx.action.amount_usdc ?? tx.action.amount ?? 0;
+        return `${usdc.toFixed(2)} USDC → ${recipient}`;
+      }
       case "stamp_agreement":
         return tx.action.description ?? tx.action.recipient ?? "Agreement recorded";
-      case "lock_savings":
-        return `${formatCless((tx.action.amount ?? 0) * 1_000_000)} CLESS for ${tx.action.duration_days ?? 0} days`;
+      case "lock_savings": {
+        const usdc = tx.action.amount_usdc ?? tx.action.amount ?? 0;
+        return `${usdc.toFixed(2)} USDC for ${tx.action.duration_days ?? 0} days`;
+      }
       case "stamp_ownership":
         return tx.action.file_name ?? "File stamped";
       default:
@@ -153,7 +177,7 @@ function TxRow({ tx }: { readonly tx: CompletedTransaction }) {
         </div>
         <p className="text-gray-300 text-sm mt-0.5 truncate">{detail}</p>
         <a
-          href={`${EXPLORER_BASE}/${tx.txHash}`}
+          href={getTxExplorerUrl(tx.txHash)}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1 text-gray-600 hover:text-violet-400 text-[10px] mt-1 transition-colors"

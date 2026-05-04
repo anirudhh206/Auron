@@ -17,7 +17,7 @@ const config: CapacitorConfig = {
   webDir: 'out', // Fallback — not used when server.url is set
 
   server: {
-    url: 'https://auron.vercel.app', // TODO: replace with actual Vercel URL after deploy
+    url: process.env.CAPACITOR_SERVER_URL || 'https://auron.vercel.app', // set CAPACITOR_SERVER_URL for local dev
     cleartext: false,
     androidScheme: 'https',
   },
@@ -26,7 +26,7 @@ const config: CapacitorConfig = {
     backgroundColor: '#030712',
     allowMixedContent: false,
     captureInput: true,
-    webContentsDebuggingEnabled: false, // set true for dev builds
+    webContentsDebuggingEnabled: process.env.NODE_ENV !== 'production',
   },
 
   plugins: {

@@ -1,133 +1,217 @@
-import { CONTRACTS } from "./initia";
+import { PublicKey, Transaction, VersionedTransaction } from "@solana/web3.js";
+import {
+  buildSOLTransferTx,
+  buildUSDCTransferTx,
+  buildMemoTx,
+  isValidSolanaAddress,
+  FEE_WALLET,
+  NETWORK,
+} from "./solana";
 
-// ─── Message builders for each contract ──────────────────────────────────────
+// Devnet demo treasury — used when NEXT_PUBLIC_FEE_WALLET env var is not set.
+// Replace this with your actual treasury address in production.
+const SYSTEM_PROGRAM = "11111111111111111111111111111111";
+const DEMO_TREASURY = "G2FAbFQPFa5qKXCetoFZQEvF9TdM4yE6UwqroeN9BCWQ"; // Auron devnet treasury
 
-export function buildTransferMsg(
-  contractAddress: string,
-  sender: string,
-  recipient: string,
-  amount: string,
-  note?: string
-) {
+// ─── Action result type ────────────────────────────────────────────────────
+// Solana supports both legacy Transaction and VersionedTransaction (Jupiter uses versioned)
+export type SolanaTransaction = Transaction | VersionedTransaction;
+
+export interface BuildResult {
+  transaction: SolanaTransaction;
+  isVersioned: boolean;
+  description: string;
+}
+
+// ─── Transfer SOL ──────────────────────────────────────────────────────────
+export async function buildTransferSOL(
+  fromAddress: string,
+  toAddress: string,
+  amountSOL: number
+): Promise<BuildResult> {
+  if (!isValidSolanaAddress(fromAddress))
+    throw new Error("Invalid sender wallet address");
+  if (!isValidSolanaAddress(toAddress))
+    throw new Error(`Invalid recipient address: "${toAddress}". Ask the user for their Solana wallet address.`);
+  if (amountSOL <= 0)
+    throw new Error("Amount must be greater than zero");
+
+  const from = new PublicKey(fromAddress);
+  const to = new PublicKey(toAddress);
+  const tx = await buildSOLTransferTx(from, to, amountSOL);
+
   return {
-    typeUrl: "/cosmwasm.wasm.v1.MsgExecuteContract",
-    value: {
-      sender,
-      contract: contractAddress || CONTRACTS.transfer,
-      msg: Buffer.from(
-        JSON.stringify({
-          transfer: {
-            to: recipient,
-            amount,
-            note: note ?? null,
-          },
-        })
-      ).toString("base64"),
-      funds: [{ denom: "ucless", amount }],
-    },
+    transaction: tx,
+    isVersioned: false,
+    description: `Transfer ${amountSOL} SOL`,
   };
 }
 
-export function buildStampAgreementMsg(
-  contractAddress: string,
-  sender: string,
-  contentHash: string,
-  partyB: string,
+// ─── Transfer USDC ─────────────────────────────────────────────────────────
+export async function buildTransferUSDC(
+  fromAddress: string,
+  toAddress: string,
+  amountUSDC: number
+): Promise<BuildResult> {
+  if (!isValidSolanaAddress(fromAddress))
+    throw new Error("Invalid sender wallet address");
+  if (!isValidSolanaAddress(toAddress))
+    throw new Error(`Invalid recipient address: "${toAddress}". Ask the user for their Solana wallet address.`);
+  if (amountUSDC <= 0)
+    throw new Error("Amount must be greater than zero");
+
+  const from = new PublicKey(fromAddress);
+  const to = new PublicKey(toAddress);
+  const tx = await buildUSDCTransferTx(from, to, amountUSDC);
+
+  return {
+    transaction: tx,
+    isVersioned: false,
+    description: `Transfer ${amountUSDC} USDC`,
+  };
+}
+
+// ─── Stamp agreement on-chain ──────────────────────────────────────────────
+// Uses Solana Memo program — permanent, immutable, timestamped by the chain
+export async function buildAgreementStamp(
+  fromAddress: string,
   description: string,
-  feeAmount: string
-) {
+  partyB: string,
+  amount: number | null,
+  contentHash: string
+): Promise<BuildResult> {
+  if (!isValidSolanaAddress(fromAddress))
+    throw new Error("Invalid sender wallet address");
+
+  const from = new PublicKey(fromAddress);
+  const tx = await buildMemoTx(from, {
+    type: "agreement",
+    hash: contentHash,
+    party_a: fromAddress,
+    party_b: partyB,
+    description,
+    amount: amount ?? undefined,
+    network: NETWORK,
+    ts: Date.now(),
+  });
+
   return {
-    typeUrl: "/cosmwasm.wasm.v1.MsgExecuteContract",
-    value: {
-      sender,
-      contract: contractAddress || CONTRACTS.agreement,
-      msg: Buffer.from(
-        JSON.stringify({
-          stamp: {
-            content_hash: contentHash,
-            party_b: partyB,
-            description,
-          },
-        })
-      ).toString("base64"),
-      funds: [{ denom: "ucless", amount: feeAmount }],
-    },
+    transaction: tx,
+    isVersioned: false,
+    description: `Agreement: ${description.slice(0, 60)}`,
   };
 }
 
-export function buildLockMsg(
-  contractAddress: string,
-  sender: string,
-  amount: string,
-  unlockAt: number,
-  label: string
-) {
-  return {
-    typeUrl: "/cosmwasm.wasm.v1.MsgExecuteContract",
-    value: {
-      sender,
-      contract: contractAddress || CONTRACTS.timelock,
-      msg: Buffer.from(
-        JSON.stringify({
-          lock: {
-            amount,
-            unlock_at: unlockAt,
-            label,
-          },
-        })
-      ).toString("base64"),
-      funds: [{ denom: "ucless", amount }],
-    },
-  };
-}
-
-export function buildStampOwnershipMsg(
-  contractAddress: string,
-  sender: string,
+// ─── Stamp file ownership on-chain ────────────────────────────────────────
+// Proves you owned this file at this block timestamp — immutable proof
+export async function buildOwnershipStamp(
+  fromAddress: string,
   fileHash: string,
   fileName: string,
-  description: string,
-  feeAmount: string
-) {
+  description: string
+): Promise<BuildResult> {
+  if (!isValidSolanaAddress(fromAddress))
+    throw new Error("Invalid sender wallet address");
+  if (!fileHash)
+    throw new Error("File hash is required — please attach your file first");
+
+  const from = new PublicKey(fromAddress);
+  const tx = await buildMemoTx(from, {
+    type: "ownership",
+    file_hash: fileHash,
+    file_name: fileName,
+    description,
+    owner: fromAddress,
+    network: NETWORK,
+    ts: Date.now(),
+  });
+
   return {
-    typeUrl: "/cosmwasm.wasm.v1.MsgExecuteContract",
-    value: {
-      sender,
-      contract: contractAddress || CONTRACTS.ownership,
-      msg: Buffer.from(
-        JSON.stringify({
-          stamp_ownership: {
-            file_hash: fileHash,
-            file_name: fileName,
-            description,
-          },
-        })
-      ).toString("base64"),
-      funds: [{ denom: "ucless", amount: feeAmount }],
-    },
+    transaction: tx,
+    isVersioned: false,
+    description: `Ownership proof: ${fileName}`,
   };
 }
 
-export function buildClaimYieldMsg(
-  contractAddress: string,
-  sender: string,
-  vaultId: string
-) {
+// ─── Lock savings — memo stamp for now, Anchor program in Phase 2 ──────────
+// For the hackathon MVP, lock savings are recorded as on-chain memo commitments.
+// Phase 2: deploy a proper Solana Anchor timelock program.
+export async function buildSavingsLock(
+  fromAddress: string,
+  amountUSDC: number,
+  durationDays: number,
+  label: string
+): Promise<BuildResult> {
+  if (!isValidSolanaAddress(fromAddress))
+    throw new Error("Invalid sender wallet address");
+  if (amountUSDC <= 0)
+    throw new Error("Lock amount must be greater than zero");
+  if (durationDays <= 0)
+    throw new Error("Duration must be at least 1 day");
+
+  const unlockAt = Date.now() + durationDays * 86_400_000;
+  const from = new PublicKey(fromAddress);
+
+  const tx = await buildMemoTx(from, {
+    type: "lock_savings",
+    amount_usdc: amountUSDC,
+    duration_days: durationDays,
+    unlock_at: unlockAt,
+    label,
+    owner: fromAddress,
+    network: NETWORK,
+    ts: Date.now(),
+  });
+
   return {
-    typeUrl: "/cosmwasm.wasm.v1.MsgExecuteContract",
-    value: {
-      sender,
-      contract: contractAddress || CONTRACTS.timelock,
-      msg: Buffer.from(
-        JSON.stringify({
-          claim_yield: {
-            vault_id: vaultId,
-          },
-        })
-      ).toString("base64"),
-      funds: [],
-    },
+    transaction: tx,
+    isVersioned: false,
+    description: `Lock ${amountUSDC} USDC for ${durationDays} days`,
   };
 }
 
-export { GAS_CONFIG } from "./initia";
+// ─── UPI Payment — USDC to Auron treasury ─────────────────────────────────
+// User pays USDC → Auron treasury → OnMeta converts → merchant gets INR via UPI.
+// This is the core Auron off-ramp flow. Merchant needs zero crypto setup.
+export async function buildUPIPayment(
+  fromAddress: string,
+  amountUSDC: number,
+  upiId: string,
+  merchantName: string,
+  inrAmount: number
+): Promise<BuildResult> {
+  if (!isValidSolanaAddress(fromAddress))
+    throw new Error("Invalid sender wallet address");
+  if (amountUSDC <= 0)
+    throw new Error("Amount must be greater than zero");
+  if (!upiId?.trim())
+    throw new Error("UPI ID is required");
+
+  // Resolve treasury address — fall back to demo treasury on devnet if not configured
+  const treasuryAddress = FEE_WALLET.toString() === SYSTEM_PROGRAM
+    ? DEMO_TREASURY
+    : FEE_WALLET.toString();
+
+  if (!isValidSolanaAddress(treasuryAddress)) {
+    throw new Error("Auron treasury wallet address is not configured. Set NEXT_PUBLIC_FEE_WALLET.");
+  }
+
+  const from = new PublicKey(fromAddress);
+  const to = new PublicKey(treasuryAddress);
+  const tx = await buildUSDCTransferTx(from, to, amountUSDC);
+
+  return {
+    transaction: tx,
+    isVersioned: false,
+    description: `UPI payment: ₹${inrAmount.toLocaleString("en-IN")} to ${merchantName || upiId} (${amountUSDC.toFixed(6)} USDC → Auron → OnMeta → UPI)`,
+  };
+}
+
+// ─── SHA-256 hash helper (browser native) ─────────────────────────────────
+export async function sha256(text: string): Promise<string> {
+  const data = new TextEncoder().encode(text);
+  const buf = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}

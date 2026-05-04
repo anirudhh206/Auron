@@ -2,18 +2,17 @@
 const nextConfig = {
   reactStrictMode: true,
 
-  experimental: {
-    serverComponentsExternalPackages: ["argon2"],
-  },
+  // argon2 must run server-side only — keep it out of the client bundle
+  serverExternalPackages: ["argon2"],
 
-  // Mark optional wagmi connector peer deps as external so webpack doesn't choke
+  // Polyfill stubs for optional wallet connector peer deps (Solana wallet adapters)
   webpack: (config, { isServer }) => {
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
-        "@base-org/account": false,
-        "@coinbase/wallet-sdk": false,
-        "@metamask/connect-evm": false,
+        fs: false,
+        path: false,
+        crypto: false,
       };
     }
     return config;
@@ -35,12 +34,13 @@ const nextConfig = {
           {
             key: "Content-Security-Policy",
             value: [
-              "default-src 'self' capacitor://localhost",
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://vercel.live capacitor://localhost",
-              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com capacitor://localhost",
-              "font-src 'self' https://fonts.gstatic.com capacitor://localhost",
-              "img-src 'self' data: blob: https: capacitor://localhost",
-              "connect-src 'self' https://*.initia.xyz https://api.anthropic.com wss://*.initia.xyz https://auron.vercel.app capacitor://localhost",
+              "default-src 'self'",
+              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://vercel.live",
+              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+              "font-src 'self' https://fonts.gstatic.com",
+              "img-src 'self' data: blob: https:",
+              // Solana RPC (Helius + devnet/mainnet), Jupiter API, Anthropic, Supabase
+              "connect-src 'self' https://*.helius-rpc.com https://api.mainnet-beta.solana.com https://api.devnet.solana.com wss://*.helius-rpc.com wss://api.mainnet-beta.solana.com wss://api.devnet.solana.com https://api.jup.ag https://price.jup.ag https://api.anthropic.com https://*.supabase.co wss://*.supabase.co https://auron.vercel.app",
               "frame-ancestors 'none'",
             ].join("; "),
           },

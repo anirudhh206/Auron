@@ -1,6 +1,9 @@
 "use client";
 
 declare global {
+  interface SpeechRecognitionEvent extends Event {
+    readonly results: SpeechRecognitionResultList;
+  }
   interface SpeechRecognition extends EventTarget {
     lang: string;
     interimResults: boolean;
@@ -12,260 +15,574 @@ declare global {
   }
 }
 
-import { useRef, useEffect, useState, useCallback, type ChangeEvent } from "react";
-import { useInterwovenKit } from "@initia/interwovenkit-react";
-import { type EncodeObject } from "@cosmjs/proto-signing";
-import { Send, Mic, MicOff, Sparkles } from "lucide-react";
+import { useRef, useEffect, useState, useCallback, forwardRef, useImperativeHandle, type ChangeEvent } from "react";
+import { usePaymentStore } from "@/store/usePaymentStore";
+import {
+  createPaymentRecord,
+  generateReceiptHash,
+  isQuoteExpired,
+  type PaymentRecord,
+} from "@/lib/payment-state";
+import { AURON_FX_RATE } from "@/lib/onmeta";
+import PaymentStatusTracker from "./PaymentStatusTracker";
+import PaymentReceipt from "./PaymentReceipt";
+import { motion, AnimatePresence } from "framer-motion";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { useWalletModal } from "@solana/wallet-adapter-react-ui";
+import { useConnection } from "@solana/wallet-adapter-react";
+import { Send, Mic, MicOff, Sparkles, Zap, Lock, FileText, ShieldCheck, QrCode, ArrowRight } from "lucide-react";
+import QRScanner, { type ParsedQRResult } from "./QRScanner";
+import { shortAddr, getUSDCBalance, NETWORK } from "@/lib/solana";
 import { useStore, ChatMessage } from "@/store/useStore";
+import type { ParsedAction } from "@/lib/claude";
 import { cn, formatTimestamp } from "@/lib/utils";
 import ConfirmCard from "./ConfirmCard";
 import RevealCard from "./RevealCard";
-import { buildTransferMsg, buildStampAgreementMsg, buildLockMsg, buildStampOwnershipMsg, buildClaimYieldMsg } from "@/lib/contracts";
-import { CONTRACTS } from "@/lib/initia";
-import { isAllowedContract } from "@/lib/security";
+import {
+  buildTransferSOL,
+  buildTransferUSDC,
+  buildUPIPayment,
+  buildAgreementStamp,
+  buildOwnershipStamp,
+  buildSavingsLock,
+  sha256,
+  type BuildResult,
+} from "@/lib/contracts";
+import { notifyTxSuccess, notifyTxFailed } from "@/lib/notifications";
 
-// ── Suggestion chips shown on empty chat ─────────────────────────
+export interface ChatInterfaceHandle {
+  openQRScanner: () => void;
+  submitMessage: (text: string) => void;
+}
+
 const SUGGESTIONS = [
-  "Send ₹500 to Priya",
-  "Lock ₹2000 for 3 months",
-  "Arjun owes me ₹1500 — save the agreement",
-  "Prove I own this photo",
+  { icon: Send,        text: "Send ₹500 to Priya",              color: "#7c3aed" },
+  { icon: Lock,        text: "Lock ₹2000 for 3 months",         color: "#10b981" },
+  { icon: FileText,    text: "Arjun owes me ₹1500 — save it",   color: "#3b82f6" },
+  { icon: ShieldCheck, text: "Prove I own this photo",           color: "#f59e0b" },
 ];
 
-export default function ChatInterface() {
-  const {
-    address,
-    isConnected,
-    openConnect,
-    requestTxBlock,
-  } = useInterwovenKit();
+const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInterface(_, ref) {
+  const { publicKey, connected: isConnected, sendTransaction } = useWallet();
+  const { setVisible } = useWalletModal();
+  const { connection } = useConnection();
+  const address = publicKey?.toString() ?? null;
+  const openConnect = () => setVisible(true);
 
-  const {
-    messages,
-    addMessage,
-    pendingTx,
-    setPendingTx,
-    isLoading,
-    setLoading,
-    prefs,
-    dailySpent,
-    addDailySpent,
-    addCompletedTx,
-  } = useStore();
+  const { messages, addMessage, pendingTx, setPendingTx, isLoading, setLoading, prefs, dailySpent, addDailySpent, addCompletedTx } = useStore();
 
-  const [input, setInput]         = useState("");
+  const [input, setInput] = useState("");
   const [isListening, setListening] = useState(false);
   const [completedTx, setCompletedTx] = useState<{ txHash: string; confirmText: string } | null>(null);
-  const [isExecuting, setExecuting]   = useState(false);
+  const [isExecuting, setExecuting] = useState(false);
+  const [streamingContent, setStreamingContent] = useState("");
+  const [showQRScanner, setShowQRScanner] = useState(false);
 
-  const bottomRef   = useRef<HTMLDivElement>(null);
-  const inputRef    = useRef<HTMLTextAreaElement>(null);
+  // ── Payment pipeline state ─────────────────────────────────────────────────
+  const [activePayment, setActivePayment] = useState<PaymentRecord | null>(null);
+  const [showReceipt, setShowReceipt] = useState(false);
+  const paymentStore = usePaymentStore();
+
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const streamTextRef = useRef("");
 
-  // Auto-scroll to latest message
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
 
-  // ── Voice input ────────────────────────────────────────────────
   function toggleVoice() {
     if (!("webkitSpeechRecognition" in globalThis || "SpeechRecognition" in globalThis)) {
       addMessage({ role: "system", content: "Voice input isn't supported in this browser. Try Chrome." });
       return;
     }
-    if (isListening) {
-      recognitionRef.current?.stop();
-      setListening(false);
-      return;
-    }
+    if (isListening) { recognitionRef.current?.stop(); setListening(false); return; }
     const SR = (globalThis as any).SpeechRecognition ?? (globalThis as any).webkitSpeechRecognition;
     const r = new SR() as SpeechRecognition;
     r.lang = "en-IN";
     r.interimResults = false;
-    r.onresult = (e) => {
-      const text = e.results[0][0].transcript;
-      setInput(text);
-      setListening(false);
-    };
+    r.onresult = (e) => { setInput(e.results[0][0].transcript); setListening(false); };
     r.onerror = () => setListening(false);
-    r.onend   = () => setListening(false);
+    r.onend = () => setListening(false);
     recognitionRef.current = r;
     r.start();
     setListening(true);
   }
 
-  // ── Textarea auto-resize ───────────────────────────────────────
   function handleInputChange(e: ChangeEvent<HTMLTextAreaElement>) {
     setInput(e.target.value);
     e.target.style.height = "auto";
     e.target.style.height = Math.min(e.target.scrollHeight, 120) + "px";
   }
 
-  // ── Submit message ─────────────────────────────────────────────
   const handleSubmit = useCallback(async (text?: string) => {
     const msg = (text ?? input).trim();
     if (!msg || isLoading) return;
-
-    if (!isConnected) {
-      openConnect();
-      return;
-    }
+    if (!isConnected) { openConnect(); return; }
 
     setInput("");
     if (inputRef.current) inputRef.current.style.height = "auto";
-
     addMessage({ role: "user", content: msg });
     setLoading(true);
+    streamTextRef.current = "";
+    setStreamingContent("");
 
     try {
-      const res = await fetch("/api/parse-intent", {
+      // Build conversation history from last 8 user/assistant exchanges
+      const history = messages
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .slice(-8)
+        .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+
+      const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: msg,
           userId: address,
+          history,
           spendCeiling: prefs.spendCeiling,
           dailyCap: prefs.dailyCap,
           dailySpent,
         }),
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        addMessage({ role: "assistant", content: data.error ?? "Something went wrong. Please try again." });
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}));
+        addMessage({ role: "assistant", content: (data as { error?: string }).error ?? "Something went wrong." });
         return;
       }
 
-      // AI needs clarification
-      if (data.type === "clarification") {
-        addMessage({ role: "assistant", content: data.question });
+      // ── Read SSE stream ────────────────────────────────────────────────
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() ?? "";
+
+        for (const part of parts) {
+          if (!part.startsWith("data: ")) continue;
+          const jsonStr = part.slice(6).trim();
+          if (!jsonStr) continue;
+
+          let event: Record<string, unknown>;
+          try { event = JSON.parse(jsonStr); } catch { continue; }
+
+          if (event.type === "text") {
+            streamTextRef.current += String(event.chunk ?? "");
+            setStreamingContent(streamTextRef.current);
+
+          } else if (event.type === "done") {
+            setStreamingContent("");
+            streamTextRef.current = "";
+            if (event.displayText) {
+              addMessage({ role: "assistant", content: event.displayText as string });
+            }
+            const action = event.action as ParsedAction | null;
+            if (action?.action && (typeof action.confidence === "number" ? action.confidence : 0) >= 0.8) {
+              setPendingTx({
+                action,
+                confirmText: String(event.confirmText ?? ""),
+                securityFlags: (event.securityFlags as any[]) ?? [],
+                requiresSlowdown: Boolean(event.requiresSlowdown),
+              });
+            }
+
+          } else if (event.type === "daily_cap_exceeded") {
+            setStreamingContent("");
+            streamTextRef.current = "";
+            addMessage({
+              role: "assistant",
+              content: `⛔ This would exceed your daily limit of ₹${(event.limit as number)?.toLocaleString("en-IN")}. You've spent ₹${(event.spent as number)?.toLocaleString("en-IN")} today.`,
+            });
+
+          } else if (event.type === "error") {
+            setStreamingContent("");
+            streamTextRef.current = "";
+            addMessage({ role: "assistant", content: String(event.message ?? "Something went wrong.") });
+          }
+        }
+      }
+    } catch {
+      addMessage({ role: "assistant", content: "Network error. Check your connection and try again." });
+    } finally {
+      setStreamingContent("");
+      streamTextRef.current = "";
+      setLoading(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [input, isLoading, isConnected, address, messages, prefs, dailySpent, addMessage, setLoading, setPendingTx]);
+
+  // ── Build Solana transaction from parsed action ────────────────────────
+  async function buildTxResult(action: any, confirmText: string): Promise<BuildResult> {
+    if (!address) throw new Error("Wallet not connected");
+
+    switch (action.action) {
+      case "transfer_sol":
+        return buildTransferSOL(address, action.recipient ?? "", action.amount ?? 0);
+
+      case "transfer":
+      case "transfer_usdc":
+        return buildTransferUSDC(address, action.recipient ?? "", action.amount_usdc ?? action.amount ?? 0);
+
+      case "upi_payment":
+        return buildUPIPayment(
+          address,
+          action.amount_usdc ?? 0,
+          action.upi_id ?? "",
+          action.merchant_name ?? action.upi_id ?? "",
+          action.inr_amount ?? 0
+        );
+
+      case "stamp_agreement": {
+        const hash = await sha256(action.description ?? confirmText);
+        return buildAgreementStamp(
+          address,
+          action.description ?? "",
+          action.recipient ?? "",
+          action.amount ?? null,
+          hash
+        );
+      }
+
+      case "lock_savings":
+        return buildSavingsLock(
+          address,
+          action.amount_usdc ?? action.amount ?? 0,
+          action.duration_days ?? 30,
+          action.label ?? action.description ?? "Savings"
+        );
+
+      case "stamp_ownership":
+        return buildOwnershipStamp(
+          address,
+          action.file_hash ?? "",
+          action.file_name ?? "file",
+          action.description ?? ""
+        );
+
+      default:
+        throw new Error(`Unknown action: ${action.action}`);
+    }
+  }
+
+  async function handleConfirm() {
+    if (!pendingTx || !publicKey) return;
+    const { action, confirmText } = pendingTx;
+
+    // ── UPI payment: use full state-machine pipeline ────────────────────────
+    if (action.action === "upi_payment") {
+      await handleUPIPayment(action, confirmText);
+      return;
+    }
+
+    // ── All other actions: existing flow ────────────────────────────────────
+    setExecuting(true);
+    try {
+      const result = await buildTxResult(action, confirmText);
+      const signature = await sendTransaction(result.transaction, connection);
+      const latestBlockhash = await connection.getLatestBlockhash("confirmed");
+      await connection.confirmTransaction({ signature, ...latestBlockhash }, "confirmed");
+
+      const isTransfer = ["transfer", "transfer_sol", "transfer_usdc"].includes(action.action ?? "");
+      const spentAmount = action.amount_usdc ?? action.amount;
+      if (isTransfer && spentAmount) addDailySpent(spentAmount);
+
+      const completed = { id: crypto.randomUUID(), action, txHash: signature, timestamp: Date.now(), confirmText };
+      addCompletedTx(completed);
+      setCompletedTx({ txHash: signature, confirmText });
+      setPendingTx(null);
+      notifyTxSuccess(action.action ?? "transaction", confirmText).catch(() => {});
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : "Unknown error";
+      addMessage({ role: "assistant", content: `❌ Transaction failed: ${errMsg}. Please try again.` });
+      notifyTxFailed(action.action ?? "transaction", errMsg).catch(() => {});
+      setPendingTx(null);
+    } finally {
+      setExecuting(false);
+    }
+  }
+
+  // ── Full UPI payment pipeline with state machine ─────────────────────────
+  async function handleUPIPayment(action: NonNullable<typeof pendingTx>["action"], confirmText: string) {
+    if (!address || !publicKey) return;
+    setExecuting(true);
+
+    // Check quote expiry before doing anything
+    // (quote was created when Claude returned the action)
+    const usdcAmount = action.amount_usdc ?? (action.inr_amount ?? 0) / AURON_FX_RATE;
+    const inrAmount = action.inr_amount ?? 0;
+
+    // Create payment record
+    const record = createPaymentRecord({
+      inrAmount,
+      usdcAmount,
+      fxRate: AURON_FX_RATE,
+      merchantUpiId: action.upi_id ?? "",
+      merchantName: action.merchant_name ?? action.upi_id?.split("@")[0] ?? "merchant",
+      fromAddress: address,
+      toAddress: process.env.NEXT_PUBLIC_FEE_WALLET ?? "G2FAbFQPFa5qKXCetoFZQEvF9TdM4yE6UwqroeN9BCWQ",
+    });
+
+    paymentStore.addPayment(record);
+    paymentStore.setActivePayment(record.paymentId);
+    setActivePayment(record);
+    setPendingTx(null);
+
+    // ── Helper: update both store and local state ─────────────────────────
+    function updateRecord(updater: (r: PaymentRecord) => PaymentRecord) {
+      paymentStore.updatePayment(record.paymentId, updater);
+      setActivePayment((prev) => prev ? updater(prev) : prev);
+    }
+
+    function transition(
+      newStatus: PaymentRecord["status"],
+      message: string,
+      data?: Record<string, unknown>
+    ) {
+      const now = Date.now();
+      updateRecord((r) => ({
+        ...r,
+        status: newStatus,
+        events: [...r.events, { timestamp: now, status: newStatus, message, data }],
+        confirmedAt: newStatus === "tx_confirmed" ? now : r.confirmedAt,
+        completedAt: newStatus === "completed" ? now : r.completedAt,
+      }));
+    }
+
+    try {
+      // ── Step 1: Check quote expiry ──────────────────────────────────────
+      if (isQuoteExpired(record)) {
+        transition("failed", "FX quote expired — rate may have changed. Please retry.");
+        updateRecord((r) => ({ ...r, failureCategory: "rate_expired", failureReason: "FX quote expired before payment was confirmed. Please try again for a fresh rate." }));
+        setExecuting(false);
         return;
       }
 
-      // Daily cap check (client-side layer 6)
-      if (data.action?.amount && data.action.action === "transfer") {
-        if (dailySpent + data.action.amount > prefs.dailyCap) {
-          addMessage({
-            role: "assistant",
-            content: `⛔ This would exceed your daily limit of ₹${prefs.dailyCap.toLocaleString("en-IN")}. You've spent ₹${dailySpent.toLocaleString("en-IN")} today. Raise your cap in Settings after a 24-hour cooldown.`,
-          });
+      // ── Step 1.5: Check USDC balance ────────────────────────────────────
+      transition("building_tx", "Checking USDC balance…");
+      let userBalance = 0;
+      try {
+        userBalance = await getUSDCBalance(address);
+      } catch {
+        // Balance check failed — network issue or wrong network
+        // Don't block the payment, Phantom will catch it if truly insufficient
+        console.warn("[balance check] failed — proceeding anyway");
+      }
+
+      if (userBalance > 0 && userBalance < usdcAmount) {
+        // We have a confirmed balance that's too low — fail fast
+        const needed = usdcAmount.toFixed(4);
+        const have = userBalance.toFixed(4);
+        const networkHint = NETWORK === "mainnet-beta"
+          ? " Make sure your Phantom wallet is on **Mainnet**."
+          : " Make sure your Phantom wallet is on **Devnet** and you have devnet USDC.";
+        transition("failed", `Insufficient USDC: need ${needed}, have ${have}`);
+        updateRecord((r) => ({
+          ...r,
+          failureCategory: "insufficient_usdc",
+          failureReason: `You need ${needed} USDC but your wallet only has ${have} USDC.${networkHint}`,
+        }));
+        addMessage({
+          role: "assistant",
+          content: `❌ **Insufficient balance.** You need **${needed} USDC** but your wallet has **${have} USDC**.${networkHint}`,
+        });
+        setExecuting(false);
+        return;
+      }
+
+      // ── Step 2: Build Solana tx ─────────────────────────────────────────
+      transition("building_tx", "Building Solana transaction…");
+      const txResult = await buildTxResult(action, confirmText);
+
+      // ── Step 3: Await user signature ────────────────────────────────────
+      transition("awaiting_signature", "Waiting for Phantom signature");
+      let signature: string;
+      try {
+        signature = await sendTransaction(txResult.transaction, connection);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Signature rejected";
+        const cancelled = msg.toLowerCase().includes("user rejected") || msg.toLowerCase().includes("cancelled");
+        transition("failed", cancelled ? "Payment cancelled by user." : `Signature failed: ${msg}`);
+        updateRecord((r) => ({
+          ...r,
+          failureCategory: cancelled ? "tx_rejected_by_user" : "tx_simulation_failed",
+          failureReason: cancelled ? "You cancelled the payment in Phantom." : msg,
+        }));
+        addMessage({ role: "assistant", content: cancelled ? "Payment cancelled." : `❌ ${msg}` });
+        setExecuting(false);
+        return;
+      }
+
+      // ── Step 4: Wait for on-chain confirmation ──────────────────────────
+      transition("tx_pending", `Tx submitted: ${signature.slice(0, 8)}…`, { signature });
+      updateRecord((r) => ({ ...r, solanaSignature: signature }));
+
+      try {
+        const latestBlockhash = await connection.getLatestBlockhash("confirmed");
+        await connection.confirmTransaction({ signature, ...latestBlockhash }, "confirmed");
+      } catch {
+        // Tx may still land — check one more time
+        const status = await connection.getSignatureStatus(signature);
+        const landed = status.value?.confirmationStatus === "confirmed" ||
+                       status.value?.confirmationStatus === "finalized";
+        if (!landed) {
+          transition("failed", "Transaction confirmation timeout — Solana network may be congested.");
+          updateRecord((r) => ({
+            ...r,
+            failureCategory: "tx_timeout",
+            failureReason: "The Solana network did not confirm your transaction in time. Your USDC was NOT deducted.",
+          }));
+          addMessage({ role: "assistant", content: "⚠️ Transaction timed out. Your USDC was not deducted. Please try again." });
+          setExecuting(false);
           return;
         }
       }
 
-      // Action ready — show confirm card
-      addMessage({ role: "assistant", content: data.confirmText });
-      setPendingTx({
-        action: data.action,
-        confirmText: data.confirmText,
-        securityFlags: data.securityFlags,
-        requiresSlowdown: data.requiresSlowdown,
-      });
+      // ── Step 5: Record on-chain confirmation ────────────────────────────
+      const now = Date.now();
+      transition("tx_confirmed", "USDC confirmed on Solana", { signature });
+      updateRecord((r) => ({ ...r, solanaSignature: signature, solanaBlockTime: now, confirmedAt: now }));
 
-    } catch {
-      addMessage({ role: "assistant", content: "Network error. Check your connection and try again." });
-    } finally {
-      setLoading(false);
-    }
-  }, [input, isLoading, isConnected, address, prefs, dailySpent, addMessage, setLoading, setPendingTx, openConnect]);
+      // Track daily spend
+      addDailySpent(usdcAmount);
+      addCompletedTx({ id: record.paymentId, action, txHash: signature, timestamp: now, confirmText });
 
-  // ── Build transaction message from action ─────────────────────
-  async function buildTxMessage(action: any, confirmText: string): Promise<EncodeObject> {
-    switch (action.action) {
-      case "transfer":
-        return buildTransferTx(action);
-      case "stamp_agreement":
-        return buildAgreementTx(action, confirmText);
-      case "lock_savings":
-        return buildLockTx(action);
-      case "stamp_ownership":
-        return buildOwnershipTx(action);
-      case "claim_yield":
-        return buildClaimTx(action);
-      default:
-        throw new Error("Unknown action type");
-    }
-  }
+      // ── Step 6: Call OnMeta off-ramp ────────────────────────────────────
+      transition("offramp_initiated", "Initiating UPI payout via OnMeta");
 
-  async function buildTransferTx(action: any): Promise<EncodeObject> {
-    const contractAddress = CONTRACTS.transfer;
-    if (!isAllowedContract(contractAddress)) throw new Error("Contract not whitelisted");
-    const amountUcless = String(Math.floor((action.amount ?? 0) * 1_000_000));
-    return buildTransferMsg(contractAddress, address, action.recipient ?? "", amountUcless, action.note ?? undefined);
-  }
+      let payoutResult: {
+        payoutId?: string; utrNumber?: string; status?: string;
+        estimatedDelivery?: string; error?: string; retryable?: boolean;
+        failureCategory?: string; retryCount?: number;
+      } | null = null;
 
-  async function buildAgreementTx(action: any, confirmText: string): Promise<EncodeObject> {
-    const contractAddress = CONTRACTS.agreement;
-    if (!isAllowedContract(contractAddress)) throw new Error("Contract not whitelisted");
-    const contentHash = await sha256(action.description ?? confirmText);
-    return buildStampAgreementMsg(contractAddress, address, contentHash, action.recipient ?? "", action.description ?? "", "5000000");
-  }
+      try {
+        transition("offramp_processing", "OnMeta processing INR payout…");
+        const res = await fetch("/api/offramp", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            paymentId: record.paymentId,
+            idempotencyKey: record.idempotencyKey,
+            usdcAmount,
+            merchantUpiId: action.upi_id,
+            merchantName: action.merchant_name ?? action.upi_id?.split("@")[0] ?? "merchant",
+            inrAmount,
+            txSignature: signature,
+            userId: address,
+          }),
+        });
 
-  async function buildLockTx(action: any): Promise<EncodeObject> {
-    const contractAddress = CONTRACTS.timelock;
-    if (!isAllowedContract(contractAddress)) throw new Error("Contract not whitelisted");
-    const amountUcless = String(Math.floor((action.amount ?? 0) * 1_000_000));
-    const unlockAt = Math.floor(Date.now() / 1000) + (action.duration_days ?? 30) * 86400;
-    return buildLockMsg(contractAddress, address, amountUcless, unlockAt, action.description ?? "Savings lock");
-  }
+        payoutResult = await res.json();
 
-  async function buildOwnershipTx(action: any): Promise<EncodeObject> {
-    const contractAddress = CONTRACTS.ownership;
-    if (!isAllowedContract(contractAddress)) throw new Error("Contract not whitelisted");
-    if (!action.file_hash) throw new Error("File hash missing — please attach your file first.");
-    return buildStampOwnershipMsg(contractAddress, address, action.file_hash, action.file_name ?? "file", action.description ?? "", "2000000");
-  }
+        if (!res.ok || payoutResult?.error) {
+          throw new Error(payoutResult?.error ?? "Payout failed");
+        }
 
-  async function buildClaimTx(action: any): Promise<EncodeObject> {
-    const contractAddress = CONTRACTS.timelock;
-    if (!isAllowedContract(contractAddress)) throw new Error("Contract not whitelisted");
-    if (!action.vault_id) throw new Error("Which vault? Say 'claim yield from vault-1'");
-    return buildClaimYieldMsg(contractAddress, address, action.vault_id);
-  }
+        // ── Step 7: Mark complete + generate receipt ──────────────────────
+        const completedNow = Date.now();
+        const receiptHash = await generateReceiptHash({
+          ...record,
+          solanaSignature: signature,
+          onmetaPayoutId: payoutResult?.payoutId ?? null,
+          utrNumber: payoutResult?.utrNumber ?? null,
+          confirmedAt: now,
+          completedAt: completedNow,
+        });
 
-  // ── Execute confirmed transaction ──────────────────────────────
-  async function handleConfirm() {
-    if (!pendingTx || !address) return;
-    setExecuting(true);
+        transition("completed", `₹${inrAmount.toLocaleString("en-IN")} delivered to ${action.upi_id}`);
+        updateRecord((r) => ({
+          ...r,
+          status: "completed",
+          onmetaPayoutId: payoutResult?.payoutId ?? null,
+          utrNumber: payoutResult?.utrNumber ?? null,
+          receiptHash,
+          completedAt: completedNow,
+        }));
 
-    const { action, confirmText } = pendingTx;
+        // Show success in chat
+        const utr = payoutResult?.utrNumber ? ` · UTR ${payoutResult.utrNumber}` : "";
+        addMessage({
+          role: "assistant",
+          content: `✅ ₹${inrAmount.toLocaleString("en-IN")} sent to ${action.merchant_name ?? action.upi_id} via UPI${utr}. Tap the tracker to view receipt.`,
+        });
 
-    try {
-      const msg = await buildTxMessage(action, confirmText);
+        notifyTxSuccess("upi_payment", confirmText).catch(() => {});
 
-      const result = await requestTxBlock({
-        messages: [msg],
-        memo: `Auron: ${action.action}`,
-        chainId: process.env.NEXT_PUBLIC_CHAIN_ID ?? "auron-1",
-      });
+      } catch (offrampErr: unknown) {
+        const errMsg = offrampErr instanceof Error ? offrampErr.message : "Payout failed";
+        const retryable = payoutResult?.retryable !== false;
 
-      if (result.code !== 0) throw new Error("Transaction failed");
+        transition("failed", `UPI payout failed: ${errMsg}`);
+        updateRecord((r) => ({
+          ...r,
+          failureCategory: (payoutResult?.failureCategory ?? "offramp_rejected") as PaymentRecord["failureCategory"],
+          failureReason: `Merchant payment failed: ${errMsg}. Your USDC has been received by Auron. ${retryable ? "Retrying automatically will be attempted." : "Please contact support."}`,
+          retryCount: payoutResult?.retryCount ?? 0,
+        }));
 
-      if (action.action === "transfer" && action.amount) {
-        addDailySpent(action.amount);
+        addMessage({
+          role: "assistant",
+          content: `⚠️ USDC transferred on-chain (confirmed) but UPI payout failed: ${errMsg}. Your funds are safe — tap the tracker to request a refund.`,
+        });
+
+        notifyTxFailed("upi_payment", errMsg).catch(() => {});
       }
 
-      const completed = {
-        id: crypto.randomUUID(),
-        action,
-        txHash: result.transactionHash,
-        timestamp: Date.now(),
-        confirmText,
-      };
-
-      addCompletedTx(completed);
-      setCompletedTx({ txHash: result.transactionHash, confirmText });
-      setPendingTx(null);
-
-    } catch (err: any) {
-      addMessage({
-        role: "assistant",
-        content: `❌ Transaction failed: ${err?.message ?? "Unknown error"}. Please try again.`,
-      });
-      setPendingTx(null);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : "Unknown error";
+      transition("failed", errMsg);
+      updateRecord((r) => ({
+        ...r,
+        failureCategory: "unknown",
+        failureReason: errMsg,
+      }));
+      addMessage({ role: "assistant", content: `❌ Payment error: ${errMsg}` });
     } finally {
       setExecuting(false);
+    }
+  }
+
+  // ── Handle refund request from tracker ──────────────────────────────────
+  async function handleRequestRefund() {
+    if (!activePayment || !address) return;
+    const p = activePayment;
+
+    setActivePayment((prev) => prev ? { ...prev, status: "refund_pending" } : prev);
+    paymentStore.transition(p.paymentId, "refund_pending", "Refund requested by user");
+
+    try {
+      const res = await fetch("/api/payment/refund", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paymentId: p.paymentId,
+          userId: address,
+          recipientAddress: address,
+          usdcAmount: p.usdcAmount,
+          reason: p.failureReason ?? "Offramp failure",
+        }),
+      });
+
+      const result = await res.json() as { success: boolean; txSignature?: string; message: string };
+
+      if (result.success) {
+        paymentStore.transition(p.paymentId, "refunded", result.message);
+        setActivePayment((prev) => prev ? { ...prev, status: "refunded", refundTxSignature: result.txSignature ?? null } : prev);
+        addMessage({ role: "assistant", content: `♻️ Refund processed: ${result.message}` });
+      } else {
+        addMessage({ role: "assistant", content: `⚠️ Refund request logged. Support will process it manually. Payment ID: ${p.paymentId.slice(0, 8)}` });
+      }
+    } catch {
+      addMessage({ role: "assistant", content: `⚠️ Could not process refund automatically. Please contact support with payment ID: ${p.paymentId.slice(0, 8)}` });
     }
   }
 
@@ -274,214 +591,480 @@ export default function ChatInterface() {
     addMessage({ role: "assistant", content: "Cancelled. What would you like to do?" });
   }
 
-  // ── Render ─────────────────────────────────────────────────────
+  // ── QR scan handler ────────────────────────────────────────────────────
+  function handleQRScan(parsed: ParsedQRResult) {
+    setShowQRScanner(false);
+    let msg: string;
+
+    if (parsed.type === "upi") {
+      const { pa, pn, am } = parsed.data;
+      const merchant = pn || pa.split("@")[0];
+      msg = am
+        ? `Pay ₹${am} to ${merchant} via UPI ID ${pa}`
+        : `Pay to ${merchant} via UPI ID ${pa} — how much should I send?`;
+    } else {
+      const { recipient, label, amount, splToken } = parsed.data;
+      const name = label || shortAddr(recipient);
+      const token = splToken ? "USDC" : "SOL";
+      msg = amount
+        ? `Send ${amount} ${token} to ${name} (${recipient})`
+        : `Send ${token} to ${name} (${recipient}) — how much should I send?`;
+    }
+
+    setTimeout(() => handleSubmit(msg), 120);
+  }
+
+  // Expose scanner + submit to parent (used by mobile Scan tab)
+  useImperativeHandle(ref, () => ({
+    openQRScanner: () => setShowQRScanner(true),
+    submitMessage: (text: string) => handleSubmit(text),
+  }));
+
+  const isEmpty = messages.length === 0;
+
+  // Network mismatch: wallet connected but on wrong Solana network
+  const showNetworkWarning = isConnected && NETWORK === "mainnet-beta" &&
+    typeof window !== "undefined" &&
+    // Detect if Phantom is likely on devnet (window.solana cluster hint)
+    (window as unknown as Record<string, { isPhantom?: boolean }>).solana?.isPhantom === true;
+
   return (
     <div className="flex flex-col h-full">
 
-      {/* ── Messages area ───────────────────────────────────────── */}
-      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+      {/* ── Network warning banner ───────────────────────────────── */}
+      {NETWORK === "mainnet-beta" && isConnected && (
+        <div
+          className="flex items-center gap-2 px-4 py-2 text-[11px] font-medium shrink-0"
+          style={{ background: "rgba(234,179,8,0.08)", borderBottom: "1px solid rgba(234,179,8,0.18)", color: "#ca8a04" }}
+        >
+          <span>⚡</span>
+          <span>Mainnet — real USDC will be spent. Ensure Phantom is on <strong>Mainnet Beta</strong>.</span>
+        </div>
+      )}
+      {NETWORK === "devnet" && isConnected && (
+        <div
+          className="flex items-center gap-2 px-4 py-2 text-[11px] font-medium shrink-0"
+          style={{ background: "rgba(59,130,246,0.08)", borderBottom: "1px solid rgba(59,130,246,0.15)", color: "#3b82f6" }}
+        >
+          <span>🔧</span>
+          <span>Devnet — test mode, no real money. Switch Phantom to <strong>Devnet</strong>.</span>
+        </div>
+      )}
+
+      {/* ── Messages ─────────────────────────────────────────────── */}
+      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-3">
 
         {/* Empty state */}
-        {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full gap-8 animate-fade-in">
-            <div className="text-center space-y-2">
-              <div className="text-4xl mb-4">⚡</div>
-              <h2 className="text-2xl font-bold text-white">
-                What do you want to do?
-              </h2>
-              <p className="text-gray-400 text-sm max-w-xs">
-                Type anything in plain English. Auron figures out the rest.
-              </p>
-            </div>
-
-            {/* Suggestion chips */}
-            <div className="flex flex-wrap gap-2 justify-center max-w-sm">
-              {SUGGESTIONS.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => handleSubmit(s)}
-                  className={cn(
-                    "px-4 py-2 rounded-full text-sm border",
-                    "border-white/10 text-gray-300 hover:border-violet-500/60",
-                    "hover:text-white hover:bg-violet-500/10",
-                    "transition-all duration-150"
-                  )}
+        <AnimatePresence>
+          {isEmpty && (
+            <motion.div
+              key="empty"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.4 }}
+              className="flex flex-col gap-5 py-4"
+            >
+              {/* ── QR HERO — flagship, dominant ─────────────────── */}
+              <motion.div
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.05, duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
+              >
+                <motion.button
+                  onClick={() => setShowQRScanner(true)}
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.99 }}
+                  className="relative w-full rounded-2xl overflow-hidden text-left group"
+                  style={{
+                    background: "linear-gradient(135deg, rgba(201,168,76,0.09) 0%, rgba(201,168,76,0.04) 100%)",
+                    border: "1px solid rgba(201,168,76,0.22)",
+                    padding: "22px 22px 18px",
+                  }}
                 >
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+                  {/* Animated scan-line sweep across the card */}
+                  <motion.div
+                    animate={{ x: ["-100%", "300%"] }}
+                    transition={{ duration: 2.8, repeat: Infinity, ease: "linear", repeatDelay: 1.4 }}
+                    className="absolute inset-y-0 w-16 pointer-events-none"
+                    style={{
+                      background: "linear-gradient(90deg, transparent, rgba(201,168,76,0.08), transparent)",
+                    }}
+                  />
 
-        {/* Message bubbles */}
-        {messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} />
+                  {/* Hover glow */}
+                  <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none rounded-2xl"
+                    style={{ background: "radial-gradient(ellipse 80% 80% at 30% 50%, rgba(201,168,76,0.08) 0%, transparent 65%)" }} />
+
+                  <div className="relative flex items-center gap-5">
+                    {/* QR Icon block */}
+                    <div className="relative shrink-0">
+                      <div className="w-[68px] h-[68px] rounded-2xl flex items-center justify-center"
+                        style={{ background: "rgba(201,168,76,0.1)", border: "1px solid rgba(201,168,76,0.28)" }}>
+                        <QrCode size={30} style={{ color: "#C9A84C" }} />
+                      </div>
+                      {/* Pulse ring */}
+                      <motion.div
+                        animate={{ scale: [1, 1.6, 1], opacity: [0.35, 0, 0.35] }}
+                        transition={{ duration: 2.2, repeat: Infinity, ease: "easeOut" }}
+                        className="absolute inset-0 rounded-2xl pointer-events-none"
+                        style={{ border: "1px solid rgba(201,168,76,0.5)" }}
+                      />
+                    </div>
+
+                    {/* Text */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span style={{ fontSize: "9px", fontWeight: 700, letterSpacing: "0.1em", color: "#C9A84C", textTransform: "uppercase" }}>
+                          Flagship feature
+                        </span>
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      </div>
+                      <p className="font-bold text-white text-[15px] tracking-tight leading-tight">
+                        Scan any UPI QR code to pay
+                      </p>
+                      <p className="text-gray-500 text-xs mt-1 leading-relaxed">
+                        Google Pay · PhonePe · Paytm · 300M+ merchants · zero setup
+                      </p>
+                    </div>
+
+                    {/* Arrow */}
+                    <div className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 group-hover:translate-x-0.5"
+                      style={{ background: "rgba(201,168,76,0.12)", border: "1px solid rgba(201,168,76,0.2)" }}>
+                      <ArrowRight size={14} style={{ color: "#C9A84C" }} />
+                    </div>
+                  </div>
+
+                  {/* Stats row */}
+                  <div className="relative mt-4 pt-3 flex items-center gap-6 flex-wrap"
+                    style={{ borderTop: "1px solid rgba(201,168,76,0.1)" }}>
+                    {[["~400ms", "finality"], ["< $0.001", "fee"], ["₹0", "for you"], ["INR", "to merchant"]].map(([val, label]) => (
+                      <div key={val} className="flex items-baseline gap-1.5">
+                        <span style={{ fontSize: "12px", fontWeight: 700, color: "#C9A84C" }}>{val}</span>
+                        <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.3)" }}>{label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </motion.button>
+              </motion.div>
+
+              {/* ── Divider ────────────────────────────────────────── */}
+              <motion.div
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                transition={{ delay: 0.18 }}
+                className="flex items-center gap-3"
+              >
+                <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.05)" }} />
+                <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.2)", letterSpacing: "0.06em", textTransform: "uppercase" }}>or type a command</span>
+                <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.05)" }} />
+              </motion.div>
+
+              {/* ── Suggestion chips — secondary ───────────────────── */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {SUGGESTIONS.map((s, i) => {
+                  const Icon = s.icon;
+                  return (
+                    <motion.button
+                      key={s.text}
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.2 + i * 0.06, duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+                      onClick={() => handleSubmit(s.text)}
+                      whileHover={{ scale: 1.02, y: -1 }}
+                      whileTap={{ scale: 0.97 }}
+                      className="flex items-center gap-3 px-4 py-3 rounded-xl text-left border border-white/6 glass transition-all duration-200 hover:border-white/12 group"
+                    >
+                      <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+                        style={{ background: `${s.color}18`, border: `1px solid ${s.color}22` }}>
+                        <Icon size={13} style={{ color: s.color }} />
+                      </div>
+                      <span className="text-gray-400 text-xs group-hover:text-gray-200 transition-colors leading-tight">{s.text}</span>
+                    </motion.button>
+                  );
+                })}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Messages */}
+        {messages.map((msg, i) => (
+          <MessageBubble key={msg.id} message={msg} index={i} />
         ))}
 
-        {/* Typing indicator */}
-        {isLoading && (
-          <div className="flex items-end gap-2 animate-fade-in">
-            <div className="w-7 h-7 rounded-full bg-violet-600/20 border border-violet-500/30 flex items-center justify-center shrink-0">
-              <Sparkles size={12} className="text-violet-400" />
-            </div>
-            <div className="chat-bubble-assistant px-4 py-3">
-              <div className="flex gap-1 items-center h-4">
-                <span className="typing-dot w-1.5 h-1.5 rounded-full bg-gray-400" />
-                <span className="typing-dot w-1.5 h-1.5 rounded-full bg-gray-400" />
-                <span className="typing-dot w-1.5 h-1.5 rounded-full bg-gray-400" />
+        {/* Typing indicator — 3 dots while waiting for first chunk */}
+        <AnimatePresence>
+          {isLoading && !streamingContent && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              className="flex items-end gap-2"
+            >
+              <div className="w-7 h-7 rounded-full btn-violet flex items-center justify-center shrink-0">
+                <Sparkles size={12} className="text-white" />
               </div>
-            </div>
-          </div>
-        )}
+              <div className="chat-bubble-assistant px-4 py-3">
+                <div className="flex gap-1 items-center h-4">
+                  <span className="typing-dot w-1.5 h-1.5 rounded-full bg-violet-400" />
+                  <span className="typing-dot w-1.5 h-1.5 rounded-full bg-violet-400" />
+                  <span className="typing-dot w-1.5 h-1.5 rounded-full bg-violet-400" />
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Streaming bubble — text appears character by character */}
+        <AnimatePresence>
+          {streamingContent && (
+            <motion.div
+              initial={{ opacity: 0, y: 8, x: -12 }}
+              animate={{ opacity: 1, y: 0, x: 0 }}
+              exit={{ opacity: 0, y: 4 }}
+              transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+              className="flex items-end gap-2"
+            >
+              <div className="w-7 h-7 rounded-full btn-violet flex items-center justify-center shrink-0 mb-1">
+                <Sparkles size={12} className="text-white" />
+              </div>
+              <div className="chat-bubble-assistant px-4 py-3 text-sm leading-relaxed text-gray-100 max-w-[80%]">
+                {streamingContent}
+                {/* Blinking cursor */}
+                <span
+                  className="inline-block w-0.5 h-[1em] bg-violet-400 ml-0.5 align-middle animate-pulse"
+                  aria-hidden="true"
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <div ref={bottomRef} />
       </div>
 
-      {/* ── Input bar ───────────────────────────────────────────── */}
-      <div className="px-4 pb-6 pt-2">
-        <div
+      {/* ── Input bar ────────────────────────────────────────────── */}
+      <div className="px-4 pb-5 pt-2 space-y-2">
+
+        {/* QR pill — shown when conversation is active (not empty state) */}
+        <AnimatePresence>
+          {!isEmpty && (
+            <motion.div
+              initial={{ opacity: 0, y: 6, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: "auto" }}
+              exit={{ opacity: 0, y: 4, height: 0 }}
+              transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <motion.button
+                onClick={() => setShowQRScanner(true)}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.97 }}
+                className="flex items-center gap-2 rounded-xl px-3 py-2 w-full transition-all duration-150 group"
+                style={{
+                  background: "rgba(201,168,76,0.05)",
+                  border: "1px solid rgba(201,168,76,0.16)",
+                }}
+              >
+                <QrCode size={13} style={{ color: "#C9A84C" }} />
+                <span style={{ fontSize: "11px", fontWeight: 600, color: "rgba(201,168,76,0.85)", letterSpacing: "0.01em" }}>
+                  Scan UPI QR to pay
+                </span>
+                <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.18)", marginLeft: "auto" }}>
+                  300M+ merchants supported
+                </span>
+                <ArrowRight size={11} style={{ color: "rgba(201,168,76,0.5)" }} />
+              </motion.button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <motion.div
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.2, duration: 0.5 }}
           className={cn(
-            "flex items-end gap-2 rounded-2xl p-3",
-            "bg-[#1c2333] border border-white/10",
-            "input-glow transition-all duration-200"
+            "flex items-end gap-2 rounded-2xl px-4 py-3",
+            "glass border border-white/8 input-glow transition-all duration-200"
           )}
         >
           <textarea
             ref={inputRef}
             value={input}
             onChange={handleInputChange}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleSubmit();
-              }
-            }}
-            placeholder={
-              isConnected
-                ? "Type what you want to do…"
-                : "Connect wallet to get started…"
-            }
+            onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSubmit(); } }}
+            placeholder={isConnected ? "Type what you want to do…" : "Connect wallet to get started…"}
             disabled={isLoading}
             rows={1}
-            className={cn(
-              "flex-1 bg-transparent text-white text-sm placeholder-gray-500",
-              "resize-none outline-none leading-6",
-              "disabled:opacity-50"
-            )}
+            className="flex-1 bg-transparent text-white text-sm placeholder-gray-600 resize-none outline-none leading-6 disabled:opacity-50"
           />
 
-          {/* Voice button */}
-          <button
+          {/* QR — icon only inside input bar (empty state already shows the hero) */}
+          {isEmpty && (
+            <motion.button
+              onClick={() => setShowQRScanner(true)}
+              whileTap={{ scale: 0.9 }}
+              title="Scan UPI QR to pay"
+              className="p-2.5 rounded-xl transition-all duration-150 shrink-0"
+              style={{ color: "#C9A84C", background: "rgba(201,168,76,0.08)" }}
+            >
+              <QrCode size={16} />
+            </motion.button>
+          )}
+
+          {/* Voice */}
+          <motion.button
             onClick={toggleVoice}
+            whileTap={{ scale: 0.9 }}
             className={cn(
-              "p-2 rounded-xl transition-colors shrink-0",
+              "p-2.5 rounded-xl transition-all duration-150 shrink-0",
               isListening
-                ? "bg-red-500/20 text-red-400"
+                ? "bg-red-500/20 text-red-400 border border-red-500/30"
                 : "text-gray-500 hover:text-gray-300 hover:bg-white/6"
             )}
-            title="Voice input"
           >
-            {isListening ? <MicOff size={18} /> : <Mic size={18} />}
-          </button>
+            {isListening
+              ? <><MicOff size={16} /><span className="sr-only">Stop</span></>
+              : <Mic size={16} />
+            }
+          </motion.button>
 
-          {/* Send button */}
-          <button
-            type="button"
-            aria-label="Send message"
+          {/* Send */}
+          <motion.button
             onClick={() => handleSubmit()}
             disabled={!input.trim() || isLoading}
+            whileHover={input.trim() && !isLoading ? { scale: 1.05 } : {}}
+            whileTap={input.trim() && !isLoading ? { scale: 0.9 } : {}}
             className={cn(
-              "p-2 rounded-xl transition-all shrink-0",
+              "p-2.5 rounded-xl transition-all duration-150 shrink-0",
               input.trim() && !isLoading
-                ? "bg-violet-600 hover:bg-violet-500 text-white"
-                : "text-gray-600 cursor-not-allowed"
+                ? "btn-violet text-white"
+                : "text-gray-700 cursor-not-allowed bg-white/3"
             )}
           >
-            <Send size={18} />
-          </button>
-        </div>
+            <Send size={16} />
+          </motion.button>
+        </motion.div>
 
-        <p className="text-center text-gray-600 text-[10px] mt-2">
+        <p className="text-center text-gray-700 text-[10px] mt-1 tracking-wide">
           Auron is in testnet — do not use real funds
         </p>
       </div>
 
-      {/* ── Confirm card overlay ─────────────────────────────────── */}
-      {pendingTx && (
-        <ConfirmCard
-          confirmText={pendingTx.confirmText}
-          action={pendingTx.action}
-          securityFlags={pendingTx.securityFlags}
-          onConfirm={handleConfirm}
-          onCancel={handleCancel}
-          isExecuting={isExecuting}
-        />
-      )}
+      {/* ── Confirm overlay ───────────────────────────────────────── */}
+      <AnimatePresence>
+        {pendingTx && (
+          <ConfirmCard
+            confirmText={pendingTx.confirmText}
+            action={pendingTx.action}
+            securityFlags={pendingTx.securityFlags}
+            onConfirm={handleConfirm}
+            onCancel={handleCancel}
+            isExecuting={isExecuting}
+          />
+        )}
+      </AnimatePresence>
 
-      {/* ── Success reveal card ──────────────────────────────────── */}
-      {completedTx && (
-        <RevealCard
-          txHash={completedTx.txHash}
-          confirmText={completedTx.confirmText}
-          onClose={() => setCompletedTx(null)}
-        />
-      )}
+      {/* ── Success reveal ────────────────────────────────────────── */}
+      <AnimatePresence>
+        {completedTx && (
+          <RevealCard
+            txHash={completedTx.txHash}
+            confirmText={completedTx.confirmText}
+            onClose={() => setCompletedTx(null)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* ── QR Scanner overlay ────────────────────────────────────── */}
+      <AnimatePresence>
+        {showQRScanner && (
+          <QRScanner
+            onScan={handleQRScan}
+            onClose={() => setShowQRScanner(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* ── Payment Status Tracker ────────────────────────────────── */}
+      <AnimatePresence>
+        {activePayment && !showReceipt && (
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4"
+            style={{ background: "rgba(0,0,0,0.65)", backdropFilter: "blur(6px)" }}>
+            <PaymentStatusTracker
+              payment={activePayment}
+              onRetry={() => {
+                // Re-submit the original payment message to restart
+                const msg = activePayment.inrAmount
+                  ? `Pay ₹${activePayment.inrAmount} to ${activePayment.merchantName ?? activePayment.merchantUpiId} via UPI ID ${activePayment.merchantUpiId}`
+                  : `Pay to ${activePayment.merchantUpiId}`;
+                setActivePayment(null);
+                setTimeout(() => handleSubmit(msg), 100);
+              }}
+              onRequestRefund={handleRequestRefund}
+              onViewReceipt={() => setShowReceipt(true)}
+              onDismiss={() => {
+                paymentStore.setActivePayment(null);
+                setActivePayment(null);
+              }}
+            />
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Payment Receipt ───────────────────────────────────────── */}
+      <AnimatePresence>
+        {activePayment && showReceipt && (
+          <PaymentReceipt
+            payment={activePayment}
+            onClose={() => setShowReceipt(false)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
-}
+});
 
-// ── Message bubble ─────────────────────────────────────────────
-function MessageBubble({ message }: { readonly message: ChatMessage }) {
+export default ChatInterface;
+
+// ── Message bubble ────────────────────────────────────────────────
+function MessageBubble({ message, index }: { readonly message: ChatMessage; readonly index: number }) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
 
   if (isSystem) {
     return (
-      <div className="flex justify-center animate-fade-in">
-        <span className="text-xs text-gray-500 bg-white/4 px-3 py-1.5 rounded-full">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="flex justify-center"
+      >
+        <span className="text-xs text-gray-500 bg-white/4 border border-white/6 px-3 py-1.5 rounded-full">
           {message.content}
         </span>
-      </div>
+      </motion.div>
     );
   }
 
   return (
-    <div
-      className={cn(
-        "flex items-end gap-2 animate-slide-up",
-        isUser ? "flex-row-reverse" : "flex-row"
-      )}
+    <motion.div
+      initial={{ opacity: 0, y: 12, x: isUser ? 12 : -12 }}
+      animate={{ opacity: 1, y: 0, x: 0 }}
+      transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+      className={cn("flex items-end gap-2", isUser ? "flex-row-reverse" : "flex-row")}
     >
-      {/* Avatar */}
       {!isUser && (
-        <div className="w-7 h-7 rounded-full bg-violet-600/20 border border-violet-500/30 flex items-center justify-center shrink-0 mb-1">
-          <Sparkles size={12} className="text-violet-400" />
+        <div className="w-7 h-7 rounded-full btn-violet flex items-center justify-center shrink-0 mb-1">
+          <Sparkles size={12} className="text-white" />
         </div>
       )}
-
       <div className="max-w-[80%] space-y-1">
-        <div
-          className={cn(
-            "px-4 py-3 text-sm leading-relaxed",
-            isUser ? "chat-bubble-user text-white" : "chat-bubble-assistant text-gray-100"
-          )}
-        >
+        <div className={cn("px-4 py-3 text-sm leading-relaxed", isUser ? "chat-bubble-user text-white" : "chat-bubble-assistant text-gray-100")}>
           {message.content}
         </div>
         <p className={cn("text-[10px] text-gray-600 px-1", isUser && "text-right")}>
           {formatTimestamp(message.timestamp / 1000)}
         </p>
       </div>
-    </div>
+    </motion.div>
   );
-}
-
-// ── SHA-256 helper (Web Crypto API — works in browser + edge) ──
-async function sha256(text: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(text);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }

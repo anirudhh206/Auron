@@ -1,36 +1,27 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, useEffect, type ReactNode } from "react";
+import { ConnectionProvider, WalletProvider } from "@solana/wallet-adapter-react";
+import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
+import { PhantomWalletAdapter } from "@solana/wallet-adapter-phantom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { InterwovenKitProvider } from "@initia/interwovenkit-react";
+import { RPC_ENDPOINT } from "@/lib/solana";
+import { initNotifications } from "@/lib/notifications";
 
-const CHAIN_ID = process.env.NEXT_PUBLIC_CHAIN_ID ?? "auron-1";
-
-// Auron Minitia chain config for InterwovenKit
-const INTERWOVENKIT_CONFIG = {
-  defaultChainId: CHAIN_ID,
-  registryUrl: "https://registry.initia.xyz",
-  routerApiUrl: "https://router.initia.xyz",
-  glyphUrl: "https://glyph.initia.xyz",
-  usernamesModuleAddress: "0x4e86b144df8e7c14f5fe9c4e3ff1e11b2b3b7ef5",
-  lockStakeModuleAddress: "0x0000000000000000000000000000000000000001",
-  minityUrl: "https://minitia.xyz",
-  dexUrl: "https://dex.initia.xyz",
-  vipUrl: "https://vip.initia.xyz",
-  theme: "dark" as const,
-  disableAnalytics: false,
-  // Layer 1: Auto-signing — users pre-approve Auron contracts so they
-  // never see a wallet popup for routine actions
-  enableAutoSign: true,
-};
+// Required CSS for the Solana wallet modal
+import "@solana/wallet-adapter-react-ui/styles.css";
 
 export default function Providers({ children }: { readonly children: ReactNode }) {
+  // Phantom is explicit; Backpack, Solflare, and any Wallet Standard
+  // compatible wallet auto-registers without a separate adapter
+  const wallets = useMemo(() => [new PhantomWalletAdapter()], []);
+
   const [queryClient] = useState(
     () =>
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 30_000,       // 30s — chain data stays fresh
+            staleTime: 30_000,
             retry: 2,
             refetchOnWindowFocus: false,
           },
@@ -38,11 +29,22 @@ export default function Providers({ children }: { readonly children: ReactNode }
       })
   );
 
+  useEffect(() => {
+    initNotifications().catch(console.error);
+  }, []);
+
   return (
-    <InterwovenKitProvider {...INTERWOVENKIT_CONFIG}>
-      <QueryClientProvider client={queryClient}>
-        {children}
-      </QueryClientProvider>
-    </InterwovenKitProvider>
+    <ConnectionProvider
+      endpoint={RPC_ENDPOINT}
+      config={{ commitment: "confirmed" }}
+    >
+      <WalletProvider wallets={wallets} autoConnect>
+        <WalletModalProvider>
+          <QueryClientProvider client={queryClient}>
+            {children}
+          </QueryClientProvider>
+        </WalletModalProvider>
+      </WalletProvider>
+    </ConnectionProvider>
   );
 }
