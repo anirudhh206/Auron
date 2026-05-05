@@ -1,26 +1,3 @@
-/**
- * Auron Payment State Machine
- *
- * Every UPI payment flows through a deterministic state machine.
- * Every state transition is logged. No state is ever silently lost.
- *
- * State graph:
- *
- *   idle
- *     └─► building_tx
- *           └─► awaiting_signature
- *                 └─► tx_pending
- *                       └─► tx_confirmed ──────────────────────────┐
- *                             └─► offramp_initiated                 │
- *                                   └─► offramp_processing          │
- *                                         ├─► completed             │
- *                                         └─► failed ───────────────┤
- *                                               └─► refund_pending  │
- *                                                     ├─► refunded  │
- *                                                     └─► failed ◄──┘
- */
-
-// ─── Status ───────────────────────────────────────────────────────────────────
 export type PaymentStatus =
   | "idle"
   | "building_tx"          // constructing the Solana transaction
@@ -52,7 +29,7 @@ export type FailureCategory =
   | "rate_expired"         // FX quote expired before user confirmed
   | "insufficient_usdc"    // User doesn't have enough USDC
   | "insufficient_sol"     // User doesn't have enough SOL for fees
-  | "network_mismatch";    // Phantom is on wrong network (devnet vs mainnet)
+  | "network_mismatch"     // Phantom is on wrong network (devnet vs mainnet)
   | "unknown";
 
 // ─── Audit event ──────────────────────────────────────────────────────────────
