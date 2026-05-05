@@ -14,12 +14,7 @@ interface OnMetaWebhookPayload {
   upi_id: string;
   timestamp: string;
 }
-export const webhookUTRStore = new Map<string, {
-  utrNumber: string;
-  payoutId: string;
-  confirmedAt: number;
-  event: string;
-}>();
+import { webhookUTRStore } from "@/lib/webhook-store";
 
 function verifyOnMetaSignature(rawBody: string, signature: string, secret: string): boolean {
   try {
