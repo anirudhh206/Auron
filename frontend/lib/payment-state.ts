@@ -51,6 +51,8 @@ export type FailureCategory =
   | "network_error"        // Generic connectivity issue
   | "rate_expired"         // FX quote expired before user confirmed
   | "insufficient_usdc"    // User doesn't have enough USDC
+  | "insufficient_sol"     // User doesn't have enough SOL for fees
+  | "network_mismatch";    // Phantom is on wrong network (devnet vs mainnet)
   | "unknown";
 
 // ─── Audit event ──────────────────────────────────────────────────────────────
