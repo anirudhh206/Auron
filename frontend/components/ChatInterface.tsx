@@ -23,7 +23,7 @@ import {
   isQuoteExpired,
   type PaymentRecord,
 } from "@/lib/payment-state";
-import { AURON_FX_RATE } from "@/lib/onmeta";
+// AURON_FX_RATE replaced by live rate from useLiveRate()
 import PaymentStatusTracker from "./PaymentStatusTracker";
 import PaymentReceipt from "./PaymentReceipt";
 import { motion, AnimatePresence } from "framer-motion";
@@ -32,7 +32,9 @@ import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { useConnection } from "@solana/wallet-adapter-react";
 import { Send, Mic, MicOff, Sparkles, Zap, Lock, FileText, ShieldCheck, QrCode, ArrowRight } from "lucide-react";
 import QRScanner, { type ParsedQRResult } from "./QRScanner";
-import { shortAddr, getUSDCBalance, NETWORK } from "@/lib/solana";
+import { shortAddr, NETWORK } from "@/lib/solana";
+import { runPreflightChecks } from "@/lib/preflight";
+import { useLiveRate } from "@/lib/useLiveRate";
 import { useStore, ChatMessage } from "@/store/useStore";
 import type { ParsedAction } from "@/lib/claude";
 import { cn, formatTimestamp } from "@/lib/utils";
@@ -68,6 +70,9 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
   const { connection } = useConnection();
   const address = publicKey?.toString() ?? null;
   const openConnect = () => setVisible(true);
+
+  // Live FX rate — refreshes every 60s, falls back to ₹83.15
+  const { auronRate } = useLiveRate();
 
   const { messages, addMessage, pendingTx, setPendingTx, isLoading, setLoading, prefs, dailySpent, addDailySpent, addCompletedTx } = useStore();
 
@@ -317,14 +322,14 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
 
     // Check quote expiry before doing anything
     // (quote was created when Claude returned the action)
-    const usdcAmount = action.amount_usdc ?? (action.inr_amount ?? 0) / AURON_FX_RATE;
+    const usdcAmount = action.amount_usdc ?? (action.inr_amount ?? 0) / auronRate;
     const inrAmount = action.inr_amount ?? 0;
 
     // Create payment record
     const record = createPaymentRecord({
       inrAmount,
       usdcAmount,
-      fxRate: AURON_FX_RATE,
+      fxRate: auronRate,
       merchantUpiId: action.upi_id ?? "",
       merchantName: action.merchant_name ?? action.upi_id?.split("@")[0] ?? "merchant",
       fromAddress: address,
@@ -366,36 +371,29 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
         return;
       }
 
-      // ── Step 1.5: Check USDC balance ────────────────────────────────────
-      transition("building_tx", "Checking USDC balance…");
-      let userBalance = 0;
+      // ── Step 1.5: Pre-flight checks (balance + network + SOL fee) ──────────
+      transition("building_tx", "Checking wallet balance…");
       try {
-        userBalance = await getUSDCBalance(address);
-      } catch {
-        // Balance check failed — network issue or wrong network
-        // Don't block the payment, Phantom will catch it if truly insufficient
-        console.warn("[balance check] failed — proceeding anyway");
-      }
+        const walletNetwork = (window as unknown as { solana?: { networkVersion?: string; network?: string } })
+          .solana?.networkVersion ?? "";
+        const preflight = await runPreflightChecks(address, usdcAmount, walletNetwork);
 
-      if (userBalance > 0 && userBalance < usdcAmount) {
-        // We have a confirmed balance that's too low — fail fast
-        const needed = usdcAmount.toFixed(4);
-        const have = userBalance.toFixed(4);
-        const networkHint = NETWORK === "mainnet-beta"
-          ? " Make sure your Phantom wallet is on **Mainnet**."
-          : " Make sure your Phantom wallet is on **Devnet** and you have devnet USDC.";
-        transition("failed", `Insufficient USDC: need ${needed}, have ${have}`);
-        updateRecord((r) => ({
-          ...r,
-          failureCategory: "insufficient_usdc",
-          failureReason: `You need ${needed} USDC but your wallet only has ${have} USDC.${networkHint}`,
-        }));
-        addMessage({
-          role: "assistant",
-          content: `❌ **Insufficient balance.** You need **${needed} USDC** but your wallet has **${have} USDC**.${networkHint}`,
-        });
-        setExecuting(false);
-        return;
+        if (!preflight.ok) {
+          transition("failed", preflight.message);
+          updateRecord((r) => ({
+            ...r,
+            failureCategory: preflight.status === "insufficient_usdc" ? "insufficient_usdc"
+              : preflight.status === "network_mismatch" ? "network_mismatch"
+              : "insufficient_sol",
+            failureReason: preflight.message,
+          }));
+          addMessage({ role: "assistant", content: `❌ ${preflight.message}` });
+          setExecuting(false);
+          return;
+        }
+      } catch {
+        // Preflight failed to run — don't block, Phantom will catch real errors
+        console.warn("[preflight] check failed — proceeding anyway");
       }
 
       // ── Step 2: Build Solana tx ─────────────────────────────────────────

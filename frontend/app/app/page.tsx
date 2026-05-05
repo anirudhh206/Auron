@@ -14,6 +14,7 @@ import ChatInterface, { type ChatInterfaceHandle } from "@/components/ChatInterf
 import TransactionHistory from "@/components/TransactionHistory";
 import OnboardingFlow from "@/components/OnboardingFlow";
 import MerchantQRModal from "@/components/MerchantQRModal";
+import NetworkMismatchBanner from "@/components/NetworkMismatchBanner";
 import {
   Zap, QrCode, MessageSquare, History, LogOut, Send,
   Lock, FileText, ShieldCheck, Wallet, ArrowRight, ChevronRight,
@@ -166,6 +167,11 @@ export default function AppPage() {
             )}
           </div>
         </motion.header>
+
+        {/* Network mismatch warning */}
+        <div className="relative z-10 max-w-2xl mx-auto px-4 pt-2">
+          <NetworkMismatchBanner />
+        </div>
 
         {/* Desktop: full chat */}
         <main className="relative z-10 flex-1 overflow-hidden">
