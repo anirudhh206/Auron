@@ -22,7 +22,7 @@ function PhantomCallbackInner() {
       setStatus("error");
       setMessage(errorMessage ?? "Rejected by user.");
       // Persist error so ChatInterface can surface it after redirect
-      sessionStorage.setItem(
+      localStorage.setItem(
         "auron_phantom_error",
         JSON.stringify({ errorCode, errorMessage, action })
       );
@@ -78,7 +78,7 @@ function PhantomCallbackInner() {
       }
 
       // Store completed signature for ChatInterface to pick up on mount
-      sessionStorage.setItem(
+      localStorage.setItem(
         "auron_completed_signature",
         JSON.stringify({
           signature:     result.signature,

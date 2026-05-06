@@ -20,13 +20,13 @@ const KEY_PENDING_ACTION  = "auron_pending_action"; // persists across redirect
 export function getDappKeypair(): nacl.BoxKeyPair {
   if (typeof window === "undefined") return nacl.box.keyPair();
 
-  const stored = sessionStorage.getItem(KEY_DAPP_SECRET);
+  const stored = localStorage.getItem(KEY_DAPP_SECRET);
   if (stored) {
     return nacl.box.keyPair.fromSecretKey(bs58.decode(stored));
   }
 
   const keypair = nacl.box.keyPair();
-  sessionStorage.setItem(KEY_DAPP_SECRET, bs58.encode(keypair.secretKey));
+  localStorage.setItem(KEY_DAPP_SECRET, bs58.encode(keypair.secretKey));
   return keypair;
 }
 
@@ -102,9 +102,9 @@ export function handleConnectResponse(
     const result = decrypted as unknown as PhantomConnectResult;
 
     // Persist session for signing
-    sessionStorage.setItem(KEY_PHANTOM_PUBKEY, phantomEncryptionPublicKey);
-    sessionStorage.setItem(KEY_PHANTOM_SESSION, result.session);
-    sessionStorage.setItem("auron_connected_pubkey", result.publicKey);
+    localStorage.setItem(KEY_PHANTOM_PUBKEY, phantomEncryptionPublicKey);
+    localStorage.setItem(KEY_PHANTOM_SESSION, result.session);
+    localStorage.setItem("auron_connected_pubkey", result.publicKey);
 
     return result;
   } catch {
@@ -126,8 +126,8 @@ export function buildSignAndSendTransactionUrl(
   pendingAction: PendingSignAction
 ): string | null {
   try {
-    const phantomPubkey = sessionStorage.getItem(KEY_PHANTOM_PUBKEY);
-    const session = sessionStorage.getItem(KEY_PHANTOM_SESSION);
+    const phantomPubkey = localStorage.getItem(KEY_PHANTOM_PUBKEY);
+    const session = localStorage.getItem(KEY_PHANTOM_SESSION);
 
     if (!phantomPubkey || !session) {
       console.error("[phantom-deeplink] No session — user must connect first");
@@ -151,7 +151,7 @@ export function buildSignAndSendTransactionUrl(
     );
 
     // Persist pending action so we can restore state after redirect
-    sessionStorage.setItem(KEY_PENDING_ACTION, JSON.stringify(pendingAction));
+    localStorage.setItem(KEY_PENDING_ACTION, JSON.stringify(pendingAction));
 
     const params = new URLSearchParams({
       dapp_encryption_public_key: bs58.encode(getDappKeypair().publicKey),
@@ -172,7 +172,7 @@ export function handleSignResponse(
   nonce: string
 ): { signature: string; pendingAction: PendingSignAction | null } | null {
   try {
-    const phantomPubkey = sessionStorage.getItem(KEY_PHANTOM_PUBKEY);
+    const phantomPubkey = localStorage.getItem(KEY_PHANTOM_PUBKEY);
     if (!phantomPubkey) return null;
 
     const sharedSecret = getSharedSecret(phantomPubkey);
@@ -182,13 +182,13 @@ export function handleSignResponse(
     const signature = decrypted.signature as string;
 
     // Restore pending action
-    const pendingRaw = sessionStorage.getItem(KEY_PENDING_ACTION);
+    const pendingRaw = localStorage.getItem(KEY_PENDING_ACTION);
     const pendingAction = pendingRaw
       ? (JSON.parse(pendingRaw) as PendingSignAction)
       : null;
 
     // Clean up
-    sessionStorage.removeItem(KEY_PENDING_ACTION);
+    localStorage.removeItem(KEY_PENDING_ACTION);
 
     return { signature, pendingAction };
   } catch {
@@ -199,24 +199,24 @@ export function handleSignResponse(
 // ─── Session helpers ─────────────────────────────────────────────────────────
 export function getConnectedPublicKey(): string | null {
   if (typeof window === "undefined") return null;
-  return sessionStorage.getItem("auron_connected_pubkey");
+  return localStorage.getItem("auron_connected_pubkey");
 }
 
 export function isPhantomSessionActive(): boolean {
   if (typeof window === "undefined") return false;
   return !!(
-    sessionStorage.getItem(KEY_PHANTOM_PUBKEY) &&
-    sessionStorage.getItem(KEY_PHANTOM_SESSION) &&
-    sessionStorage.getItem("auron_connected_pubkey")
+    localStorage.getItem(KEY_PHANTOM_PUBKEY) &&
+    localStorage.getItem(KEY_PHANTOM_SESSION) &&
+    localStorage.getItem("auron_connected_pubkey")
   );
 }
 
 export function clearPhantomSession(): void {
-  sessionStorage.removeItem(KEY_DAPP_SECRET);
-  sessionStorage.removeItem(KEY_PHANTOM_PUBKEY);
-  sessionStorage.removeItem(KEY_PHANTOM_SESSION);
-  sessionStorage.removeItem("auron_connected_pubkey");
-  sessionStorage.removeItem(KEY_PENDING_ACTION);
+  localStorage.removeItem(KEY_DAPP_SECRET);
+  localStorage.removeItem(KEY_PHANTOM_PUBKEY);
+  localStorage.removeItem(KEY_PHANTOM_SESSION);
+  localStorage.removeItem("auron_connected_pubkey");
+  localStorage.removeItem(KEY_PENDING_ACTION);
 }
 
 // ─── Detect mobile / Phantom browser ─────────────────────────────────────────

@@ -9,8 +9,8 @@
  * Flow:
  *  1. connect()          — opens Phantom app via deep link, redirects back to /phantom-callback?action=connect
  *  2. signAndSend()      — opens Phantom app to sign a tx, redirects back to /phantom-callback?action=sign
- *  3. consumeCompletedSignature() — reads signature from sessionStorage on return, clears it
- *  4. consumePhantomError()       — reads rejection/error from sessionStorage on return, clears it
+ *  3. consumeCompletedSignature() — reads signature from localStorage on return, clears it
+ *  4. consumePhantomError()       — reads rejection/error from localStorage on return, clears it
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -26,14 +26,14 @@ import {
   type PendingSignAction,
 } from "@/lib/phantom-deeplink";
 
-// ── sessionStorage keys ───────────────────────────────────────────────────────
+// ── localStorage keys ───────────────────────────────────────────────────────
 export const KEY_MOBILE_PAYMENT_CONTEXT = "auron_mobile_payment_context";
 export const KEY_COMPLETED_SIGNATURE    = "auron_completed_signature";
 export const KEY_PHANTOM_ERROR          = "auron_phantom_error";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-/** Full payment context serialised to sessionStorage before the Phantom redirect. */
+/** Full payment context serialised to localStorage before the Phantom redirect. */
 export interface MobilePaymentContext {
   paymentId:      string;
   idempotencyKey: string;
@@ -64,7 +64,7 @@ export function usePhantomDeepLink() {
   const [isMobileDevice]     = useState(() => typeof window !== "undefined" ? isMobile()        : false);
   const [isInPhantomBrowser] = useState(() => typeof window !== "undefined" ? isPhantomBrowser(): false);
 
-  // ── Sync session state from sessionStorage ────────────────────────────────
+  // ── Sync session state from localStorage ────────────────────────────────
   useEffect(() => {
     const active = isPhantomSessionActive();
     setIsConnected(active);
@@ -92,7 +92,7 @@ export function usePhantomDeepLink() {
 
   // ── Sign & Send ───────────────────────────────────────────────────────────
   /**
-   * Serialise `paymentContext` to sessionStorage, then redirect to Phantom
+   * Serialise `paymentContext` to localStorage, then redirect to Phantom
    * to sign and send `transaction`.  Returns false if the session is gone.
    *
    * IMPORTANT: this call redirects away from the current page.
@@ -107,7 +107,7 @@ export function usePhantomDeepLink() {
 
       // Persist payment context so we can resume after redirect
       if (paymentContext) {
-        sessionStorage.setItem(KEY_MOBILE_PAYMENT_CONTEXT, JSON.stringify(paymentContext));
+        localStorage.setItem(KEY_MOBILE_PAYMENT_CONTEXT, JSON.stringify(paymentContext));
       }
 
       const url = buildSignAndSendTransactionUrl(
@@ -126,7 +126,7 @@ export function usePhantomDeepLink() {
   // ── Consume completed signature ───────────────────────────────────────────
   /**
    * Call once on app mount.  If Phantom just returned a signature, returns it
-   * together with the stored payment context.  Clears sessionStorage.
+   * together with the stored payment context.  Clears localStorage.
    */
   const consumeCompletedSignature = useCallback((): {
     completed:      CompletedSignature;
@@ -134,22 +134,22 @@ export function usePhantomDeepLink() {
   } | null => {
     if (typeof window === "undefined") return null;
 
-    const sigRaw = sessionStorage.getItem(KEY_COMPLETED_SIGNATURE);
+    const sigRaw = localStorage.getItem(KEY_COMPLETED_SIGNATURE);
     if (!sigRaw) return null;
 
     try {
       const completed = JSON.parse(sigRaw) as CompletedSignature;
 
-      const ctxRaw       = sessionStorage.getItem(KEY_MOBILE_PAYMENT_CONTEXT);
+      const ctxRaw       = localStorage.getItem(KEY_MOBILE_PAYMENT_CONTEXT);
       const paymentContext = ctxRaw ? (JSON.parse(ctxRaw) as MobilePaymentContext) : null;
 
-      sessionStorage.removeItem(KEY_COMPLETED_SIGNATURE);
-      sessionStorage.removeItem(KEY_MOBILE_PAYMENT_CONTEXT);
+      localStorage.removeItem(KEY_COMPLETED_SIGNATURE);
+      localStorage.removeItem(KEY_MOBILE_PAYMENT_CONTEXT);
 
       return { completed, paymentContext };
     } catch {
-      sessionStorage.removeItem(KEY_COMPLETED_SIGNATURE);
-      sessionStorage.removeItem(KEY_MOBILE_PAYMENT_CONTEXT);
+      localStorage.removeItem(KEY_COMPLETED_SIGNATURE);
+      localStorage.removeItem(KEY_MOBILE_PAYMENT_CONTEXT);
       return null;
     }
   }, []);
@@ -164,9 +164,9 @@ export function usePhantomDeepLink() {
     action:       string;
   } | null => {
     if (typeof window === "undefined") return null;
-    const raw = sessionStorage.getItem(KEY_PHANTOM_ERROR);
+    const raw = localStorage.getItem(KEY_PHANTOM_ERROR);
     if (!raw) return null;
-    sessionStorage.removeItem(KEY_PHANTOM_ERROR);
+    localStorage.removeItem(KEY_PHANTOM_ERROR);
     try {
       return JSON.parse(raw);
     } catch {
@@ -182,7 +182,7 @@ export function usePhantomDeepLink() {
   }, []);
 
   return {
-    /** True when a Phantom deep-link session is active in sessionStorage. */
+    /** True when a Phantom deep-link session is active in localStorage. */
     isConnected,
     /** Connected wallet public key (base58), or null. */
     publicKey,
@@ -196,7 +196,7 @@ export function usePhantomDeepLink() {
     consumeCompletedSignature,
     /** Read & clear error after Phantom rejection. */
     consumePhantomError,
-    /** Re-sync session state from sessionStorage. */
+    /** Re-sync session state from localStorage. */
     refreshSession,
     /** True on Android / iPhone (not inside Phantom's built-in browser). */
     isMobileDevice,
