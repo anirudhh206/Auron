@@ -15,6 +15,7 @@ import TransactionHistory from "@/components/TransactionHistory";
 import OnboardingFlow from "@/components/OnboardingFlow";
 import MerchantQRModal from "@/components/MerchantQRModal";
 import NetworkMismatchBanner from "@/components/NetworkMismatchBanner";
+import { usePhantomDeepLink } from "@/hooks/usePhantomDeepLink";
 import {
   Zap, QrCode, MessageSquare, History, LogOut, Send,
   Lock, FileText, ShieldCheck, Wallet, ArrowRight, ChevronRight,
@@ -26,8 +27,14 @@ type MobileTab = "scan" | "chat";
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function AppPage() {
-  const { publicKey, connected: isConnected } = useWallet();
-  const address = publicKey?.toString() ?? null;
+  const { publicKey, connected: walletConnected } = useWallet();
+  const { setVisible } = useWalletModal();
+  const deepLink = usePhantomDeepLink();
+
+  // Merge desktop wallet-adapter + mobile deep-link session
+  const isConnected = walletConnected || deepLink.isConnected;
+  const address = publicKey?.toString() ?? deepLink.publicKey ?? null;
+
   const { setAddress, prefs } = useStore();
 
   const [showHistory, setShowHistory] = useState(false);
@@ -205,7 +212,25 @@ export default function AppPage() {
               className="p-2 rounded-xl" style={{ color: "var(--text-muted)" }}>
               <History size={16} />
             </button>
-            {isConnected ? <WalletWidget /> : (
+            {walletConnected ? (
+              <WalletWidget />
+            ) : deepLink.isConnected && address ? (
+              /* Mobile deep-link session pill */
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl"
+                style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)" }}>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span style={{ fontSize: "11px", fontWeight: 600, color: "#10b981", fontFamily: "monospace" }}>
+                  {shortAddr(address)}
+                </span>
+                <button
+                  onClick={() => { deepLink.disconnect(); }}
+                  className="ml-1 opacity-50 hover:opacity-100 transition-opacity"
+                  title="Disconnect"
+                >
+                  <LogOut size={12} style={{ color: "#10b981" }} />
+                </button>
+              </div>
+            ) : (
               <button onClick={handleSignOut} className="p-2 rounded-xl" style={{ color: "var(--text-muted)" }}>
                 <LogOut size={16} />
               </button>
@@ -226,6 +251,11 @@ export default function AppPage() {
               onMyQR={() => setShowMyQR(true)}
               onQuickAction={handleQuickAction}
               onSignOut={handleSignOut}
+              onConnect={() =>
+                deepLink.isMobileDevice && !deepLink.isInPhantomBrowser
+                  ? deepLink.connect()
+                  : setVisible(true)
+              }
             />
           </div>
 
@@ -275,6 +305,7 @@ function MobileScanHome({
   onMyQR,
   onQuickAction,
   onSignOut,
+  onConnect,
 }: {
   readonly address: string | null;
   readonly isConnected: boolean;
@@ -283,8 +314,8 @@ function MobileScanHome({
   readonly onMyQR: () => void;
   readonly onQuickAction: (text: string) => void;
   readonly onSignOut: () => void;
+  readonly onConnect: () => void;
 }) {
-  const { setVisible } = useWalletModal();
 
   const { data: solBalance = 0 } = useQuery({
     queryKey: ["sol-balance", address],
@@ -355,7 +386,7 @@ function MobileScanHome({
                 Connect your Phantom wallet to start
               </p>
               <motion.button
-                onClick={() => setVisible(true)}
+                onClick={onConnect}
                 whileTap={{ scale: 0.97 }}
                 className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold"
                 style={{ background: "rgba(201,168,76,0.15)", border: "1px solid rgba(201,168,76,0.3)", color: "#C9A84C" }}

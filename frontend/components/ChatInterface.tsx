@@ -30,7 +30,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { useConnection } from "@solana/wallet-adapter-react";
-import { Send, Mic, MicOff, Sparkles, Zap, Lock, FileText, ShieldCheck, QrCode, ArrowRight } from "lucide-react";
+import { Send, Mic, MicOff, Sparkles, Lock, FileText, ShieldCheck, QrCode, ArrowRight } from "lucide-react";
 import QRScanner, { type ParsedQRResult } from "./QRScanner";
 import { shortAddr, NETWORK } from "@/lib/solana";
 import { runPreflightChecks } from "@/lib/preflight";
@@ -51,6 +51,7 @@ import {
   type BuildResult,
 } from "@/lib/contracts";
 import { notifyTxSuccess, notifyTxFailed } from "@/lib/notifications";
+import { usePhantomDeepLink, type MobilePaymentContext } from "@/hooks/usePhantomDeepLink";
 
 export interface ChatInterfaceHandle {
   openQRScanner: () => void;
@@ -65,11 +66,25 @@ const SUGGESTIONS = [
 ];
 
 const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInterface(_, ref) {
-  const { publicKey, connected: isConnected, sendTransaction } = useWallet();
+  const { publicKey, connected: walletConnected, sendTransaction } = useWallet();
   const { setVisible } = useWalletModal();
   const { connection } = useConnection();
-  const address = publicKey?.toString() ?? null;
-  const openConnect = () => setVisible(true);
+
+  // ── Phantom Mobile Deep Link session ────────────────────────────────────
+  const deepLink = usePhantomDeepLink();
+
+  // Merge desktop (wallet adapter) + mobile (deep link) connection state
+  const isConnected = walletConnected || deepLink.isConnected;
+  const address     = publicKey?.toString() ?? deepLink.publicKey ?? null;
+
+  function openConnect() {
+    // On mobile Chrome (not inside Phantom browser) → deep link connect
+    if (deepLink.isMobileDevice && !deepLink.isInPhantomBrowser) {
+      deepLink.connect();
+    } else {
+      setVisible(true);
+    }
+  }
 
   // Live FX rate — refreshes every 60s, falls back to ₹83.15
   const { auronRate } = useLiveRate();
@@ -96,6 +111,43 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
+
+  // ── Resume after Phantom mobile signing redirect ──────────────────────────
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    // Sync deep-link session (Phantom just redirected back)
+    deepLink.refreshSession();
+
+    // Check if Phantom returned an error
+    const phantomErr = deepLink.consumePhantomError();
+    if (phantomErr) {
+      const msg =
+        phantomErr.action === "sign"
+          ? `❌ Transaction rejected in Phantom: ${phantomErr.errorMessage ?? "User cancelled."}`
+          : `❌ Wallet connection rejected: ${phantomErr.errorMessage ?? "User cancelled."}`;
+      addMessage({ role: "assistant", content: msg });
+      return;
+    }
+
+    // Check if Phantom just completed a signature
+    const result = deepLink.consumeCompletedSignature();
+    if (!result) return;
+
+    const { completed, paymentContext } = result;
+    const { signature } = completed;
+
+    if (!paymentContext || paymentContext.actionType !== "upi_payment") {
+      // Generic non-UPI signing (transfer, etc.) — just surface the signature
+      addMessage({
+        role: "assistant",
+        content: `✅ Transaction signed on-chain. Signature: \`${signature.slice(0, 12)}…\``,
+      });
+      return;
+    }
+
+    // ── Resume UPI payment post-signature flow ────────────────────────────
+    void resumeUPIAfterMobileSign(signature, paymentContext);
+  }, []); // intentionally run once on mount
 
   function toggleVoice() {
     if (!("webkitSpeechRecognition" in globalThis || "SpeechRecognition" in globalThis)) {
@@ -278,8 +330,195 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
     }
   }
 
+  // ── Post-signature resume (mobile deep-link path) ─────────────────────────
+  // Called on mount when Phantom redirected back with a completed signature.
+  async function resumeUPIAfterMobileSign(
+    signature: string,
+    ctx: MobilePaymentContext
+  ) {
+    setExecuting(true);
+
+    // Reconstruct a minimal PaymentRecord with the original IDs
+    const now = Date.now();
+    const resumedRecord: PaymentRecord = {
+      paymentId:          ctx.paymentId,
+      idempotencyKey:     ctx.idempotencyKey,
+      inrAmount:          ctx.inrAmount,
+      usdcAmount:         ctx.usdcAmount,
+      fxRate:             ctx.fxRate,
+      quoteExpiresAt:     now + 60_000,   // already signed — expiry irrelevant
+      merchantUpiId:      ctx.upiId,
+      merchantName:       ctx.merchantName,
+      solanaSignature:    signature,
+      solanaBlockTime:    null,
+      fromAddress:        ctx.fromAddress,
+      toAddress:          ctx.toAddress,
+      onmetaPayoutId:     null,
+      utrNumber:          null,
+      receiptHash:        null,
+      status:             "tx_pending",
+      events: [{
+        timestamp: now,
+        status:    "tx_pending",
+        message:   `Resumed after Phantom mobile signing. Tx: ${signature.slice(0, 8)}…`,
+      }],
+      initiatedAt:        now,
+      confirmedAt:        null,
+      completedAt:        null,
+      failureCategory:    null,
+      failureReason:      null,
+      retryCount:         0,
+      refundTxSignature:  null,
+    };
+
+    paymentStore.addPayment(resumedRecord);
+    paymentStore.setActivePayment(ctx.paymentId);
+    setActivePayment(resumedRecord);
+
+    // Helper: update both store + local state
+    function updateRecord(updater: (r: PaymentRecord) => PaymentRecord) {
+      paymentStore.updatePayment(ctx.paymentId, updater);
+      setActivePayment((prev) => (prev ? updater(prev) : prev));
+    }
+    function transition(
+      newStatus: PaymentRecord["status"],
+      message: string,
+      data?: Record<string, unknown>
+    ) {
+      const t = Date.now();
+      updateRecord((r) => ({
+        ...r,
+        status: newStatus,
+        events: [...r.events, { timestamp: t, status: newStatus, message, data }],
+        confirmedAt: newStatus === "tx_confirmed" ? t : r.confirmedAt,
+        completedAt: newStatus === "completed"    ? t : r.completedAt,
+      }));
+    }
+
+    try {
+      // ── Wait for on-chain confirmation ──────────────────────────────────
+      transition("tx_pending", `Confirming tx: ${signature.slice(0, 8)}…`, { signature });
+      try {
+        const latestBlockhash = await connection.getLatestBlockhash("confirmed");
+        await connection.confirmTransaction({ signature, ...latestBlockhash }, "confirmed");
+      } catch {
+        const status = await connection.getSignatureStatus(signature);
+        const landed =
+          status.value?.confirmationStatus === "confirmed" ||
+          status.value?.confirmationStatus === "finalized";
+        if (!landed) {
+          transition("failed", "Confirmation timeout — Solana may be congested.");
+          updateRecord((r) => ({
+            ...r,
+            failureCategory: "tx_timeout",
+            failureReason:   "Transaction not confirmed in time. Your USDC was NOT deducted.",
+          }));
+          addMessage({ role: "assistant", content: "⚠️ Tx timed out. Your USDC was not deducted. Please try again." });
+          setExecuting(false);
+          return;
+        }
+      }
+
+      const confirmedAt = Date.now();
+      transition("tx_confirmed", "USDC confirmed on Solana", { signature });
+      updateRecord((r) => ({ ...r, solanaBlockTime: confirmedAt, confirmedAt }));
+      addDailySpent(ctx.usdcAmount);
+      addCompletedTx({
+        id:          ctx.paymentId,
+        action:      {
+          action: "upi_payment", upi_id: ctx.upiId,
+          amount_usdc: ctx.usdcAmount, inr_amount: ctx.inrAmount,
+          amount: null, recipient: null, merchant_name: ctx.merchantName,
+          note: null, duration_days: null, file_hash: null, file_name: null,
+          description: null, label: null, vault_id: null,
+          confidence: 1, ambiguity: null,
+        } as import("@/lib/claude").ParsedAction,
+        txHash:      signature,
+        timestamp:   confirmedAt,
+        confirmText: ctx.confirmText,
+      });
+
+      // ── Call OnMeta offramp ─────────────────────────────────────────────
+      transition("offramp_initiated", "Initiating UPI payout via OnMeta");
+      let payoutResult: {
+        payoutId?: string; utrNumber?: string; error?: string;
+        retryable?: boolean; failureCategory?: string; retryCount?: number;
+      } | null = null;
+
+      try {
+        transition("offramp_processing", "OnMeta processing INR payout…");
+        const res = await fetch("/api/offramp", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            paymentId:      ctx.paymentId,
+            idempotencyKey: ctx.idempotencyKey,
+            usdcAmount:     ctx.usdcAmount,
+            merchantUpiId:  ctx.upiId,
+            merchantName:   ctx.merchantName,
+            inrAmount:      ctx.inrAmount,
+            txSignature:    signature,
+            userId:         ctx.fromAddress,
+          }),
+        });
+        payoutResult = await res.json();
+        if (!res.ok || payoutResult?.error) throw new Error(payoutResult?.error ?? "Payout failed");
+
+        const completedAt = Date.now();
+        const receiptHash = await generateReceiptHash({
+          ...resumedRecord,
+          solanaSignature: signature,
+          onmetaPayoutId: payoutResult?.payoutId ?? null,
+          utrNumber:      payoutResult?.utrNumber ?? null,
+          confirmedAt,
+          completedAt,
+        });
+
+        transition("completed", `₹${ctx.inrAmount.toLocaleString("en-IN")} delivered to ${ctx.upiId}`);
+        updateRecord((r) => ({
+          ...r,
+          status:         "completed",
+          onmetaPayoutId: payoutResult?.payoutId ?? null,
+          utrNumber:      payoutResult?.utrNumber ?? null,
+          receiptHash,
+          completedAt,
+        }));
+
+        const utr = payoutResult?.utrNumber ? ` · UTR ${payoutResult.utrNumber}` : "";
+        addMessage({
+          role:    "assistant",
+          content: `✅ ₹${ctx.inrAmount.toLocaleString("en-IN")} sent to ${ctx.merchantName} via UPI${utr}. Tap the tracker to view receipt.`,
+        });
+        notifyTxSuccess("upi_payment", ctx.confirmText).catch(() => {});
+
+      } catch (offrampErr: unknown) {
+        const errMsg = offrampErr instanceof Error ? offrampErr.message : "Payout failed";
+        transition("failed", `UPI payout failed: ${errMsg}`);
+        updateRecord((r) => ({
+          ...r,
+          failureCategory: (payoutResult?.failureCategory ?? "offramp_rejected") as PaymentRecord["failureCategory"],
+          failureReason:   `Merchant payment failed: ${errMsg}. Your USDC was received by Auron. Contact support.`,
+          retryCount:      payoutResult?.retryCount ?? 0,
+        }));
+        addMessage({
+          role:    "assistant",
+          content: `⚠️ USDC confirmed on-chain but UPI payout failed: ${errMsg}. Tap the tracker to request a refund.`,
+        });
+        notifyTxFailed("upi_payment", errMsg).catch(() => {});
+      }
+
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : "Unknown error";
+      transition("failed", errMsg);
+      updateRecord((r) => ({ ...r, failureCategory: "unknown", failureReason: errMsg }));
+      addMessage({ role: "assistant", content: `❌ Payment error: ${errMsg}` });
+    } finally {
+      setExecuting(false);
+    }
+  }
+
   async function handleConfirm() {
-    if (!pendingTx || !publicKey) return;
+    if (!pendingTx || !address) return;
     const { action, confirmText } = pendingTx;
 
     // ── UPI payment: use full state-machine pipeline ────────────────────────
@@ -288,10 +527,21 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
       return;
     }
 
-    // ── All other actions: existing flow ────────────────────────────────────
+    // ── All other actions ────────────────────────────────────────────────────
     setExecuting(true);
     try {
       const result = await buildTxResult(action, confirmText);
+
+      // Mobile: use deep link for signing
+      if (deepLink.isMobileDevice && !deepLink.isInPhantomBrowser && deepLink.isConnected) {
+        deepLink.signAndSend(
+          result.transaction,
+          { confirmText, actionType: action.action ?? "unknown", returnPath: "/app" },
+        );
+        setExecuting(false);
+        return; // page will redirect
+      }
+
       const signature = await sendTransaction(result.transaction, connection);
       const latestBlockhash = await connection.getLatestBlockhash("confirmed");
       await connection.confirmTransaction({ signature, ...latestBlockhash }, "confirmed");
@@ -317,7 +567,8 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
 
   // ── Full UPI payment pipeline with state machine ─────────────────────────
   async function handleUPIPayment(action: NonNullable<typeof pendingTx>["action"], confirmText: string) {
-    if (!address || !publicKey) return;
+    if (!address) return;
+    // Mobile deep-link: wallet adapter publicKey may be null — that's OK
     setExecuting(true);
 
     // Check quote expiry before doing anything
@@ -403,6 +654,43 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
       // ── Step 3: Await user signature ────────────────────────────────────
       transition("awaiting_signature", "Waiting for Phantom signature");
       let signature: string;
+
+      // Mobile deep-link path: redirect to Phantom, resume after redirect-back
+      if (deepLink.isMobileDevice && !deepLink.isInPhantomBrowser && deepLink.isConnected) {
+        const toAddress = process.env.NEXT_PUBLIC_FEE_WALLET ?? "G2FAbFQPFa5qKXCetoFZQEvF9TdM4yE6UwqroeN9BCWQ";
+        const paymentContext: MobilePaymentContext = {
+          paymentId:      record.paymentId,
+          idempotencyKey: record.idempotencyKey,
+          usdcAmount,
+          inrAmount,
+          upiId:          action.upi_id ?? "",
+          merchantName:   action.merchant_name ?? action.upi_id?.split("@")[0] ?? "merchant",
+          fromAddress:    address,
+          toAddress,
+          fxRate:         auronRate,
+          confirmText,
+          actionType:     "upi_payment",
+        };
+        const redirected = deepLink.signAndSend(
+          txResult.transaction,
+          { paymentId: record.paymentId, confirmText, actionType: "upi_payment", returnPath: "/app" },
+          paymentContext
+        );
+        if (!redirected) {
+          transition("failed", "Phantom session expired. Please reconnect wallet.");
+          updateRecord((r) => ({
+            ...r,
+            failureCategory: "tx_rejected_by_user",
+            failureReason:   "Phantom session expired. Reconnect and try again.",
+          }));
+          addMessage({ role: "assistant", content: "❌ Phantom session expired. Tap Connect Wallet and try again." });
+          setExecuting(false);
+        }
+        // Page will redirect — execution stops here
+        return;
+      }
+
+      // Desktop / Phantom-browser path: use wallet adapter
       try {
         signature = await sendTransaction(txResult.transaction, connection);
       } catch (err: unknown) {

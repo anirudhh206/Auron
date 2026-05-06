@@ -2,8 +2,8 @@
 
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
-import { useEffect, useState } from "react";
-import { buildPhantomConnectUrl, isMobile, isPhantomBrowser } from "@/lib/phantom-deeplink";
+import { usePhantomDeepLink } from "@/hooks/usePhantomDeepLink";
+import { shortAddr } from "@/lib/solana";
 
 interface ConnectWalletButtonProps {
   className?: string;
@@ -11,48 +11,37 @@ interface ConnectWalletButtonProps {
 }
 
 export default function ConnectWalletButton({ className, children }: ConnectWalletButtonProps) {
-  const { connected, publicKey, disconnect } = useWallet();
+  const { connected: walletConnected, publicKey, disconnect } = useWallet();
   const { setVisible } = useWalletModal();
-  const [mobile, setMobile] = useState(false);
-  const [inPhantomBrowser, setInPhantomBrowser] = useState(false);
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://auron-mocha.vercel.app";
-  const cluster = (process.env.NEXT_PUBLIC_SOLANA_NETWORK ?? "devnet") as "devnet" | "mainnet-beta";
+  const deepLink = usePhantomDeepLink();
 
-  useEffect(() => {
-    setMobile(isMobile());
-    setInPhantomBrowser(isPhantomBrowser());
-  }, []);
+  // Merge both connection sources
+  const isConnected = walletConnected || deepLink.isConnected;
+  const address = publicKey?.toString() ?? deepLink.publicKey ?? null;
 
-  function handleConnect() {
-    if (connected) {
+  function handleClick() {
+    if (walletConnected) {
       disconnect();
       return;
     }
-
-    // Inside Phantom browser — use standard adapter
-    if (inPhantomBrowser) {
-      setVisible(true);
+    if (deepLink.isConnected) {
+      deepLink.disconnect();
       return;
     }
 
-    // Mobile outside Phantom browser — use deep link
-    if (mobile) {
-      const connectUrl = buildPhantomConnectUrl(appUrl, cluster);
-      window.location.href = connectUrl;
-      return;
+    // Not connected — pick connection method
+    if (deepLink.isMobileDevice && !deepLink.isInPhantomBrowser) {
+      deepLink.connect();   // mobile Chrome → Phantom deep link
+    } else {
+      setVisible(true);     // desktop or inside Phantom browser → wallet modal
     }
-
-    // Desktop — use standard wallet modal
-    setVisible(true);
   }
 
-  const shortKey = publicKey
-    ? `${publicKey.toString().slice(0, 4)}…${publicKey.toString().slice(-4)}`
-    : null;
+  const shortKey = address ? shortAddr(address) : null;
 
   return (
-    <button onClick={handleConnect} className={className}>
-      {children ?? (connected ? `Connected: ${shortKey}` : "Connect Wallet")}
+    <button onClick={handleClick} className={className}>
+      {children ?? (isConnected ? `Connected: ${shortKey}` : "Connect Wallet")}
     </button>
   );
 }
