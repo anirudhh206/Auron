@@ -42,6 +42,35 @@ export interface PaymentEvent {
   data?: Record<string, unknown>; // Any extra context (error, hash, etc.)
 }
 
+// ─── Quote metadata (locked at payment creation) ──────────────────────────────
+export interface QuoteMetadata {
+  quoteId:       string;
+  marketRate:    number;   // raw CoinGecko rate at quote time
+  auronRate:     number;   // after spread
+  spreadPercent: number;   // e.g. 0.85
+  expiresAt:     number;   // Unix ms
+  createdAt:     number;
+}
+
+// ─── Risk metadata ────────────────────────────────────────────────────────────
+export interface RiskMetadata {
+  score:            number;    // 0–100 (higher = riskier)
+  flags:            string[];  // e.g. ["new_recipient", "high_velocity"]
+  blocked:          boolean;
+  requiresSlowdown: boolean;
+  assessedAt:       number;    // Unix ms
+}
+
+// ─── Route metadata ───────────────────────────────────────────────────────────
+export interface RouteMetadata {
+  provider:         string;    // "onmeta" | "transak" | "stripe" | "manual"
+  fallbackProvider: string | null;
+  region:           string;    // "IN" | "US" | "EU" | "SEA" | "GLOBAL"
+  feePercent:       number;
+  estimatedSeconds: number;
+  selectedAt:       number;    // Unix ms
+}
+
 // ─── Full payment record ──────────────────────────────────────────────────────
 export interface PaymentRecord {
   // ── Identity ────────────────────────────────────────────────────────────────
@@ -53,6 +82,11 @@ export interface PaymentRecord {
   usdcAmount: number;         // USDC user will spend (6 decimal precision)
   fxRate: number;             // ₹/USDC locked at quote time
   quoteExpiresAt: number;     // Unix ms — quote valid for 60 seconds
+  quote: QuoteMetadata | null;       // Full quote metadata
+
+  // ── Risk + Route ─────────────────────────────────────────────────────────────
+  risk:  RiskMetadata  | null;
+  route: RouteMetadata | null;
 
   // ── Merchant ─────────────────────────────────────────────────────────────────
   merchantUpiId: string;      // e.g. "merchant@paytm"
@@ -67,6 +101,8 @@ export interface PaymentRecord {
   // ── Off-ramp ─────────────────────────────────────────────────────────────────
   onmetaPayoutId: string | null;  // OnMeta payout ID
   utrNumber: string | null;       // UPI transaction reference number
+  verifiedTx: boolean;            // Server-side on-chain verification result
+  demoMode: boolean;              // Was this a demo settlement?
 
   // ── Receipt ──────────────────────────────────────────────────────────────────
   receiptHash: string | null;     // SHA-256 of canonical receipt data (see below)
@@ -107,6 +143,9 @@ export function createPaymentRecord(params: {
     usdcAmount: params.usdcAmount,
     fxRate: params.fxRate,
     quoteExpiresAt: now + 60_000, // 60s quote window
+    quote: null,
+    risk: null,
+    route: null,
     merchantUpiId: params.merchantUpiId,
     merchantName: params.merchantName,
     solanaSignature: null,
@@ -115,6 +154,8 @@ export function createPaymentRecord(params: {
     toAddress: params.toAddress,
     onmetaPayoutId: null,
     utrNumber: null,
+    verifiedTx: false,
+    demoMode: false,
     receiptHash: null,
     status: "idle",
     events: [{

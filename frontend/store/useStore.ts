@@ -56,9 +56,11 @@ interface AuronStore {
   prefs: UserPrefs;
   setPrefs: (prefs: Partial<UserPrefs>) => void;
 
-  // Daily spend tracking
-  dailySpent: number;
+  // Daily spend tracking (USDC + INR tracked separately)
+  dailySpent: number;         // USDC spent today
   addDailySpent: (amount: number) => void;
+  dailySpentINR: number;      // INR equivalent spent today (for INR-based daily cap)
+  addDailySpentINR: (amount: number) => void;
   dailySpentResetAt: number;
 
   // UI state
@@ -105,14 +107,24 @@ export const useStore = create<AuronStore>()(
 
       // Daily cap tracking
       dailySpent: 0,
+      dailySpentINR: 0,
       dailySpentResetAt: Date.now() + 86_400_000,
       addDailySpent: (amount) => {
         const now = Date.now();
         const s = get();
         if (now > s.dailySpentResetAt) {
-          set({ dailySpent: amount, dailySpentResetAt: now + 86_400_000 });
+          set({ dailySpent: amount, dailySpentINR: 0, dailySpentResetAt: now + 86_400_000 });
         } else {
           set({ dailySpent: s.dailySpent + amount });
+        }
+      },
+      addDailySpentINR: (amount) => {
+        const now = Date.now();
+        const s = get();
+        if (now > s.dailySpentResetAt) {
+          set({ dailySpent: 0, dailySpentINR: amount, dailySpentResetAt: now + 86_400_000 });
+        } else {
+          set({ dailySpentINR: s.dailySpentINR + amount });
         }
       },
 
@@ -127,6 +139,7 @@ export const useStore = create<AuronStore>()(
         prefs: s.prefs,
         completedTxs: s.completedTxs,
         dailySpent: s.dailySpent,
+        dailySpentINR: s.dailySpentINR,
         dailySpentResetAt: s.dailySpentResetAt,
       }),
     }

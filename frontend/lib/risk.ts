@@ -27,7 +27,8 @@ export type RiskFlag =
 
 const LIMITS = {
   SINGLE_TX_USDC:          500,    // max single payment
-  DAILY_USDC:            2_000,    // rolling 24h cap
+  DAILY_USDC:            2_000,    // rolling 24h cap (USDC)
+  DAILY_INR:           166_000,    // rolling 24h cap (INR, ≈ $2000 at ₹83)
   TX_PER_HOUR:              10,    // velocity ceiling
   NEW_RECIPIENT_WARN_USDC: 100,    // flag if new UPI ID + large amount
 } as const;
@@ -45,7 +46,8 @@ export interface RiskTransaction {
   recipientId:     string;   // UPI ID or wallet address
   amountUSDC:      number;
   amountINR:       number;
-  dailySpentUSDC:  number;   // cumulative today before this tx
+  dailySpentUSDC:  number;   // cumulative today before this tx (USDC)
+  dailySpentINR?:  number;   // cumulative today before this tx (INR) — preferred for INR payments
   recentTxCount:   number;   // number of txs in the last hour
   isNewRecipient:  boolean;  // first time paying this UPI ID?
   isDuplicate?:    boolean;  // same amount + recipient in last 60s?
@@ -59,9 +61,11 @@ export interface RiskAssessment {
   flags:            RiskFlag[];
   reason:           string | null;  // human-readable explanation
   limits: {
-    singleTx:  number;
-    daily:     number;
-    remaining: number;        // USDC left today after this tx
+    singleTx:     number;
+    daily:        number;     // USDC daily cap
+    dailyINR:     number;     // INR daily cap
+    remaining:    number;     // USDC left today after this tx
+    remainingINR: number;     // INR left today after this tx
   };
 }
 
@@ -83,8 +87,11 @@ export function assessRisk(tx: RiskTransaction): RiskAssessment {
     score += 40;
   }
 
-  // 3 — Daily limit
-  if (tx.dailySpentUSDC + tx.amountUSDC > LIMITS.DAILY_USDC) {
+  // 3 — Daily limit (prefer INR comparison for UPI payments, fall back to USDC)
+  const dailyLimitBreached = tx.dailySpentINR !== undefined
+    ? tx.dailySpentINR + tx.amountINR > LIMITS.DAILY_INR
+    : tx.dailySpentUSDC + tx.amountUSDC > LIMITS.DAILY_USDC;
+  if (dailyLimitBreached) {
     flags.push("amount_exceeds_daily_limit");
     score += 50;
   }
@@ -120,9 +127,11 @@ export function assessRisk(tx: RiskTransaction): RiskAssessment {
     flags,
     reason: flags.length > 0 ? getRiskReason(flags[0]) : null,
     limits: {
-      singleTx:  LIMITS.SINGLE_TX_USDC,
-      daily:     LIMITS.DAILY_USDC,
-      remaining: Math.max(0, LIMITS.DAILY_USDC - tx.dailySpentUSDC - tx.amountUSDC),
+      singleTx:     LIMITS.SINGLE_TX_USDC,
+      daily:        LIMITS.DAILY_USDC,
+      dailyINR:     LIMITS.DAILY_INR,
+      remaining:    Math.max(0, LIMITS.DAILY_USDC - tx.dailySpentUSDC - tx.amountUSDC),
+      remainingINR: Math.max(0, LIMITS.DAILY_INR - (tx.dailySpentINR ?? 0) - tx.amountINR),
     },
   };
 }

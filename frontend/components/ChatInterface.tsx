@@ -92,7 +92,7 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
   // Live FX rate — refreshes every 60s, falls back to ₹83.15
   const { auronRate } = useLiveRate();
 
-  const { messages, addMessage, pendingTx, setPendingTx, isLoading, setLoading, prefs, dailySpent, addDailySpent, addCompletedTx } = useStore();
+  const { messages, addMessage, pendingTx, setPendingTx, isLoading, setLoading, prefs, dailySpent, dailySpentINR, addDailySpent, addDailySpentINR, addCompletedTx } = useStore();
 
   const [input, setInput] = useState("");
   const [isListening, setListening] = useState(false);
@@ -350,6 +350,9 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
       usdcAmount:         ctx.usdcAmount,
       fxRate:             ctx.fxRate,
       quoteExpiresAt:     now + 60_000,   // already signed — expiry irrelevant
+      quote:              null,
+      risk:               null,
+      route:              null,
       merchantUpiId:      ctx.upiId,
       merchantName:       ctx.merchantName,
       solanaSignature:    signature,
@@ -358,6 +361,8 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
       toAddress:          ctx.toAddress,
       onmetaPayoutId:     null,
       utrNumber:          null,
+      verifiedTx:         false,
+      demoMode:           false,
       receiptHash:        null,
       status:             "tx_pending",
       events: [{
@@ -574,21 +579,59 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
     // Mobile deep-link: wallet adapter publicKey may be null — that's OK
     setExecuting(true);
 
-    // Check quote expiry before doing anything
-    // (quote was created when Claude returned the action)
-    const usdcAmount = action.amount_usdc ?? (action.inr_amount ?? 0) / auronRate;
+    // ── Fetch authoritative quote from server ──────────────────────────────
+    // Claude's parsed amount_usdc is ONLY used as fallback.
+    // The real USDC amount is always computed server-side with the live rate + spread.
     const inrAmount = action.inr_amount ?? 0;
+    const merchantUpiId = action.upi_id ?? "";
+    const merchantName = action.merchant_name ?? merchantUpiId.split("@")[0] ?? "merchant";
+
+    let usdcAmount = action.amount_usdc ?? inrAmount / auronRate;
+    let quoteMeta: import("@/lib/payment-state").QuoteMetadata | null = null;
+    let quoteFxRate = auronRate;
+
+    try {
+      const quoteRes = await fetch("/api/quote", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inrAmount, merchantUpiId, merchantName }),
+      });
+      if (quoteRes.ok) {
+        const q = await quoteRes.json() as {
+          quoteId: string; usdcAmount: number; marketRate: number;
+          auronRate: number; spreadPercent: number; expiresAt: number; createdAt: number;
+        };
+        usdcAmount  = q.usdcAmount;
+        quoteFxRate = q.auronRate;
+        quoteMeta   = {
+          quoteId:       q.quoteId,
+          marketRate:    q.marketRate,
+          auronRate:     q.auronRate,
+          spreadPercent: q.spreadPercent,
+          expiresAt:     q.expiresAt,
+          createdAt:     q.createdAt,
+        };
+      }
+    } catch {
+      console.warn("[quote] Server quote failed — using live rate fallback");
+    }
 
     // Create payment record
     const record = createPaymentRecord({
       inrAmount,
       usdcAmount,
-      fxRate: auronRate,
-      merchantUpiId: action.upi_id ?? "",
-      merchantName: action.merchant_name ?? action.upi_id?.split("@")[0] ?? "merchant",
+      fxRate: quoteFxRate,
+      merchantUpiId,
+      merchantName,
       fromAddress: address,
       toAddress: process.env.NEXT_PUBLIC_FEE_WALLET ?? "G2FAbFQPFa5qKXCetoFZQEvF9TdM4yE6UwqroeN9BCWQ",
     });
+
+    // Attach quote metadata immediately
+    if (quoteMeta) {
+      record.quote = quoteMeta;
+      record.quoteExpiresAt = quoteMeta.expiresAt;
+    }
 
     paymentStore.addPayment(record);
     paymentStore.setActivePayment(record.paymentId);
@@ -627,15 +670,29 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
 
       // ── Step 1.5: Risk assessment ───────────────────────────────────────────
       transition("risk_check", "Running security check…");
+      const riskNow = Date.now();
       const risk = assessRisk({
         userId:          address,
-        recipientId:     action.upi_id ?? "",
+        recipientId:     merchantUpiId,
         amountUSDC:      usdcAmount,
         amountINR:       inrAmount,
         dailySpentUSDC:  dailySpent,
-        recentTxCount:   0,         // TODO: wire to tx history count in last hour
-        isNewRecipient:  true,      // TODO: wire to payment history lookup
+        dailySpentINR:   dailySpentINR,        // INR-based daily cap comparison
+        recentTxCount:   0,                    // TODO: wire to payment history count
+        isNewRecipient:  true,                 // TODO: wire to completed tx lookup
       });
+
+      // Attach risk metadata to record
+      updateRecord((r) => ({
+        ...r,
+        risk: {
+          score:            risk.score,
+          flags:            risk.flags ?? [],
+          blocked:          risk.blocked,
+          requiresSlowdown: risk.requiresSlowdown,
+          assessedAt:       riskNow,
+        },
+      }));
 
       if (risk.blocked) {
         transition("failed", risk.reason ?? "Transaction blocked by risk engine");
@@ -763,14 +820,30 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
       transition("tx_confirmed", "USDC confirmed on Solana", { signature });
       updateRecord((r) => ({ ...r, solanaSignature: signature, solanaBlockTime: now, confirmedAt: now }));
 
-      // Track daily spend
-      addDailySpent(usdcAmount);
       addCompletedTx({ id: record.paymentId, action, txHash: signature, timestamp: now, confirmText });
+
+      // ── Step 5b: Track daily spend (USDC + INR) ────────────────────────
+      addDailySpent(usdcAmount);
+      addDailySpentINR(inrAmount);
 
       // ── Step 6: Route + settle ──────────────────────────────────────────
       transition("routing", "Selecting best settlement route…");
-      const region = detectRegion("INR", action.upi_id ?? undefined);
-      const route  = chooseProvider(region, usdcAmount);
+      const region   = detectRegion("INR", merchantUpiId || undefined);
+      const route    = chooseProvider(region, usdcAmount);
+      const routeNow = Date.now();
+
+      // Attach route metadata to record
+      updateRecord((r) => ({
+        ...r,
+        route: {
+          provider:         route.provider,
+          fallbackProvider: route.fallback ?? null,
+          region,
+          feePercent:       route.feePercent,
+          estimatedSeconds: route.estimatedTimeSeconds,
+          selectedAt:       routeNow,
+        },
+      }));
 
       transition("offramp_initiated", `Payout via ${route.provider} · est. ${route.estimatedTimeLabel}`);
 
@@ -781,8 +854,8 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
           {
             paymentId:        record.paymentId,
             idempotencyKey:   record.idempotencyKey,
-            recipientId:      action.upi_id ?? "",
-            recipientName:    action.merchant_name ?? action.upi_id?.split("@")[0] ?? "merchant",
+            recipientId:      merchantUpiId,
+            recipientName:    merchantName,
             amount:           inrAmount,
             currency:         "INR",
             method:           "upi",
@@ -809,20 +882,22 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
           completedAt: completedNow,
         });
 
-        transition("completed", `₹${inrAmount.toLocaleString("en-IN")} delivered to ${action.upi_id}`);
+        transition("completed", `₹${inrAmount.toLocaleString("en-IN")} delivered to ${merchantUpiId}`);
         updateRecord((r) => ({
           ...r,
-          status: "completed",
+          status:         "completed",
           onmetaPayoutId: settlement.payoutId ?? null,
-          utrNumber: settlement.referenceNumber ?? null,
+          utrNumber:      settlement.referenceNumber ?? null,
+          verifiedTx:     (settlement as any).verifiedTx ?? false,
+          demoMode:       (settlement as any).demoMode   ?? false,
           receiptHash,
-          completedAt: completedNow,
+          completedAt:    completedNow,
         }));
 
         const utr = settlement.referenceNumber ? ` · UTR ${settlement.referenceNumber}` : "";
         addMessage({
           role: "assistant",
-          content: `✅ ₹${inrAmount.toLocaleString("en-IN")} sent to ${action.merchant_name ?? action.upi_id} via UPI${utr}. Tap the tracker to view receipt.`,
+          content: `✅ ₹${inrAmount.toLocaleString("en-IN")} sent to ${merchantName} via UPI${utr}. Tap the tracker to view receipt.`,
         });
 
         notifyTxSuccess("upi_payment", confirmText).catch(() => {});
