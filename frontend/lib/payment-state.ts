@@ -1,11 +1,13 @@
 export type PaymentStatus =
   | "idle"
+  | "risk_check"           // fraud / risk assessment running
   | "building_tx"          // constructing the Solana transaction
   | "awaiting_signature"   // Phantom modal open
   | "tx_pending"           // tx submitted, waiting for on-chain confirmation
   | "tx_confirmed"         // Solana confirmed — USDC reached Auron treasury
-  | "offramp_initiated"    // OnMeta payout started
-  | "offramp_processing"   // OnMeta processing (≤30s)
+  | "routing"              // selecting best settlement provider
+  | "offramp_initiated"    // payout started
+  | "offramp_processing"   // provider processing (≤30s)
   | "completed"            // Merchant received INR via UPI — terminal ✓
   | "failed"               // Hard failure — terminal ✗
   | "refund_pending"       // USDC being returned to user
@@ -188,10 +190,12 @@ export const MINIMUM_TREASURY_RESERVE_USDC = 100; // alert below this
 // ─── Display helpers ──────────────────────────────────────────────────────────
 export const STATUS_LABELS: Record<PaymentStatus, string> = {
   idle:                "Creating payment",
+  risk_check:          "Running security check",
   building_tx:         "Building transaction",
   awaiting_signature:  "Waiting for signature",
   tx_pending:          "Confirming on Solana",
   tx_confirmed:        "Confirmed on-chain",
+  routing:             "Selecting best route",
   offramp_initiated:   "Sending to merchant",
   offramp_processing:  "Processing payment",
   completed:           "Payment complete",

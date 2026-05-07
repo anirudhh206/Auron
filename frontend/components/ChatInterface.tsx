@@ -52,6 +52,9 @@ import {
 } from "@/lib/contracts";
 import { notifyTxSuccess, notifyTxFailed } from "@/lib/notifications";
 import { usePhantomDeepLink, type MobilePaymentContext } from "@/hooks/usePhantomDeepLink";
+import { assessRisk } from "@/lib/risk";
+import { chooseProvider, detectRegion } from "@/lib/routing";
+import { settlePayment } from "@/lib/settlement";
 
 export interface ChatInterfaceHandle {
   openQRScanner: () => void;
@@ -622,7 +625,31 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
         return;
       }
 
-      // ── Step 1.5: Pre-flight checks (balance + network + SOL fee) ──────────
+      // ── Step 1.5: Risk assessment ───────────────────────────────────────────
+      transition("risk_check", "Running security check…");
+      const risk = assessRisk({
+        userId:          address,
+        recipientId:     action.upi_id ?? "",
+        amountUSDC:      usdcAmount,
+        amountINR:       inrAmount,
+        dailySpentUSDC:  dailySpent,
+        recentTxCount:   0,         // TODO: wire to tx history count in last hour
+        isNewRecipient:  true,      // TODO: wire to payment history lookup
+      });
+
+      if (risk.blocked) {
+        transition("failed", risk.reason ?? "Transaction blocked by risk engine");
+        updateRecord((r) => ({
+          ...r,
+          failureCategory: "unknown",
+          failureReason: risk.reason,
+        }));
+        addMessage({ role: "assistant", content: `🛡️ ${risk.reason}` });
+        setExecuting(false);
+        return;
+      }
+
+      // ── Step 1.6: Pre-flight checks (balance + network + SOL fee) ──────────
       transition("building_tx", "Checking wallet balance…");
       try {
         const walletNetwork = (window as unknown as { solana?: { networkVersion?: string; network?: string } })
@@ -643,7 +670,6 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
           return;
         }
       } catch {
-        // Preflight failed to run — don't block, Phantom will catch real errors
         console.warn("[preflight] check failed — proceeding anyway");
       }
 
@@ -741,36 +767,35 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
       addDailySpent(usdcAmount);
       addCompletedTx({ id: record.paymentId, action, txHash: signature, timestamp: now, confirmText });
 
-      // ── Step 6: Call OnMeta off-ramp ────────────────────────────────────
-      transition("offramp_initiated", "Initiating UPI payout via OnMeta");
+      // ── Step 6: Route + settle ──────────────────────────────────────────
+      transition("routing", "Selecting best settlement route…");
+      const region = detectRegion("INR", action.upi_id ?? undefined);
+      const route  = chooseProvider(region, usdcAmount);
 
-      let payoutResult: {
-        payoutId?: string; utrNumber?: string; status?: string;
-        estimatedDelivery?: string; error?: string; retryable?: boolean;
-        failureCategory?: string; retryCount?: number;
-      } | null = null;
+      transition("offramp_initiated", `Payout via ${route.provider} · est. ${route.estimatedTimeLabel}`);
 
       try {
-        transition("offramp_processing", "OnMeta processing INR payout…");
-        const res = await fetch("/api/offramp", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            paymentId: record.paymentId,
-            idempotencyKey: record.idempotencyKey,
-            usdcAmount,
-            merchantUpiId: action.upi_id,
-            merchantName: action.merchant_name ?? action.upi_id?.split("@")[0] ?? "merchant",
-            inrAmount,
-            txSignature: signature,
-            userId: address,
-          }),
-        });
+        transition("offramp_processing", `Processing ₹${inrAmount.toLocaleString("en-IN")} via ${route.provider}…`);
 
-        payoutResult = await res.json();
+        const settlement = await settlePayment(
+          {
+            paymentId:        record.paymentId,
+            idempotencyKey:   record.idempotencyKey,
+            recipientId:      action.upi_id ?? "",
+            recipientName:    action.merchant_name ?? action.upi_id?.split("@")[0] ?? "merchant",
+            amount:           inrAmount,
+            currency:         "INR",
+            method:           "upi",
+            provider:         route.provider,
+            sourceAmountUSDC: usdcAmount,
+            txSignature:      signature,
+            userId:           address,
+          },
+          route.fallback,
+        );
 
-        if (!res.ok || payoutResult?.error) {
-          throw new Error(payoutResult?.error ?? "Payout failed");
+        if (!settlement.success) {
+          throw new Error(settlement.error ?? "Payout failed");
         }
 
         // ── Step 7: Mark complete + generate receipt ──────────────────────
@@ -778,8 +803,8 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
         const receiptHash = await generateReceiptHash({
           ...record,
           solanaSignature: signature,
-          onmetaPayoutId: payoutResult?.payoutId ?? null,
-          utrNumber: payoutResult?.utrNumber ?? null,
+          onmetaPayoutId: settlement.payoutId ?? null,
+          utrNumber: settlement.referenceNumber ?? null,
           confirmedAt: now,
           completedAt: completedNow,
         });
@@ -788,14 +813,13 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
         updateRecord((r) => ({
           ...r,
           status: "completed",
-          onmetaPayoutId: payoutResult?.payoutId ?? null,
-          utrNumber: payoutResult?.utrNumber ?? null,
+          onmetaPayoutId: settlement.payoutId ?? null,
+          utrNumber: settlement.referenceNumber ?? null,
           receiptHash,
           completedAt: completedNow,
         }));
 
-        // Show success in chat
-        const utr = payoutResult?.utrNumber ? ` · UTR ${payoutResult.utrNumber}` : "";
+        const utr = settlement.referenceNumber ? ` · UTR ${settlement.referenceNumber}` : "";
         addMessage({
           role: "assistant",
           content: `✅ ₹${inrAmount.toLocaleString("en-IN")} sent to ${action.merchant_name ?? action.upi_id} via UPI${utr}. Tap the tracker to view receipt.`,
@@ -805,19 +829,18 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
 
       } catch (offrampErr: unknown) {
         const errMsg = offrampErr instanceof Error ? offrampErr.message : "Payout failed";
-        const retryable = payoutResult?.retryable !== false;
 
-        transition("failed", `UPI payout failed: ${errMsg}`);
+        transition("failed", `Payout failed: ${errMsg}`);
         updateRecord((r) => ({
           ...r,
-          failureCategory: (payoutResult?.failureCategory ?? "offramp_rejected") as PaymentRecord["failureCategory"],
-          failureReason: `Merchant payment failed: ${errMsg}. Your USDC has been received by Auron. ${retryable ? "Retrying automatically will be attempted." : "Please contact support."}`,
-          retryCount: payoutResult?.retryCount ?? 0,
+          failureCategory: "offramp_rejected",
+          failureReason: `Merchant payment failed: ${errMsg}. Your USDC has been received by Auron. Please contact support.`,
+          retryCount: 0,
         }));
 
         addMessage({
           role: "assistant",
-          content: `⚠️ USDC transferred on-chain (confirmed) but UPI payout failed: ${errMsg}. Your funds are safe — tap the tracker to request a refund.`,
+          content: `⚠️ USDC confirmed on-chain but payout failed: ${errMsg}. Funds are safe — tap the tracker to request a refund.`,
         });
 
         notifyTxFailed("upi_payment", errMsg).catch(() => {});
