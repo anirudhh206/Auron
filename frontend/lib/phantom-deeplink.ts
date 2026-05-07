@@ -18,7 +18,7 @@ const KEY_PENDING_ACTION  = "auron_pending_action"; // persists across redirect
 
 // ─── dApp keypair — generated once per browser session ───────────────────────
 export function getDappKeypair(): nacl.BoxKeyPair {
-  if (typeof window === "undefined") return nacl.box.keyPair();
+  if (typeof globalThis.window === "undefined") return nacl.box.keyPair();
 
   const stored = localStorage.getItem(KEY_DAPP_SECRET);
   if (stored) {
@@ -198,12 +198,12 @@ export function handleSignResponse(
 
 // ─── Session helpers ─────────────────────────────────────────────────────────
 export function getConnectedPublicKey(): string | null {
-  if (typeof window === "undefined") return null;
+  if (typeof globalThis.window === "undefined") return null;
   return localStorage.getItem("auron_connected_pubkey");
 }
 
 export function isPhantomSessionActive(): boolean {
-  if (typeof window === "undefined") return false;
+  if (typeof globalThis.window === "undefined") return false;
   return !!(
     localStorage.getItem(KEY_PHANTOM_PUBKEY) &&
     localStorage.getItem(KEY_PHANTOM_SESSION) &&
@@ -221,11 +221,11 @@ export function clearPhantomSession(): void {
 
 // ─── Detect mobile / Phantom browser ─────────────────────────────────────────
 export function isMobile(): boolean {
-  if (typeof window === "undefined") return false;
+  if (typeof globalThis.window === "undefined") return false;
   return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 }
 
 export function isPhantomBrowser(): boolean {
-  if (typeof window === "undefined") return false;
-  return !!(window as unknown as { phantom?: unknown }).phantom;
+  if (typeof globalThis.window === "undefined") return false;
+  return !!(globalThis.window as unknown as { phantom?: unknown }).phantom;
 }
