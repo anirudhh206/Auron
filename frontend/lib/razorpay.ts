@@ -102,41 +102,38 @@ export async function initiateRazorpayPayout(
   );
 
   try {
-    // ── Create contact (recipient) ─────────────────────────────────────────────
+    // ── Step 1: Create contact (recipient) ────────────────────────────────────
+    console.log(`[razorpay] STEP 1/3 Creating contact name="${req.recipientName}" referenceId=${req.referenceId}`);
     const contactResult = await createContact(keyId, keySecret, req);
     if (!contactResult.success) {
+      console.error(`[razorpay] STEP 1 FAILED: ${contactResult.error}`);
       return contactResult;
     }
     const contactId = contactResult.contactId!;
+    console.log(`[razorpay] STEP 1 OK contactId=${contactId}`);
 
-    // ── Create fund account (UPI) ──────────────────────────────────────────────
+    // ── Step 2: Create fund account (UPI) ────────────────────────────────────
+    console.log(`[razorpay] STEP 2/3 Creating fund account upi=${req.upiId} contactId=${contactId}`);
     const fundAccountResult = await createFundAccount(keyId, keySecret, contactId, req.upiId);
     if (!fundAccountResult.success) {
+      console.error(`[razorpay] STEP 2 FAILED: ${fundAccountResult.error}`);
       return fundAccountResult;
     }
     const fundAccountId = fundAccountResult.fundAccountId!;
+    console.log(`[razorpay] STEP 2 OK fundAccountId=${fundAccountId}`);
 
-    // ── Initiate payout ────────────────────────────────────────────────────────
-    const payoutResult = await createPayout(
-      keyId,
-      keySecret,
-      fundAccountId,
-      req
-    );
+    // ── Step 3: Initiate payout ───────────────────────────────────────────────
+    console.log(`[razorpay] STEP 3/3 Initiating payout amount=₹${req.amount} fundAccountId=${fundAccountId}`);
+    const payoutResult = await createPayout(keyId, keySecret, fundAccountId, req);
 
     if (payoutResult.success) {
-      // Cache the successful result
-      payoutCache.set(req.referenceId, {
-        result: payoutResult,
-        cachedAt: Date.now(),
-      });
-
+      payoutCache.set(req.referenceId, { result: payoutResult, cachedAt: Date.now() });
       console.log(
-        `[razorpay] SUCCESS referenceId=${req.referenceId} payoutId=${payoutResult.payoutId} utr=${payoutResult.utr}`
+        `[razorpay] SUCCESS referenceId=${req.referenceId} payoutId=${payoutResult.payoutId} utr=${payoutResult.utr ?? "pending"}`
       );
     } else {
       console.error(
-        `[razorpay] FAILED referenceId=${req.referenceId} error="${payoutResult.error}" retryable=${payoutResult.retryable}`
+        `[razorpay] STEP 3 FAILED: error="${payoutResult.error}" code="${payoutResult.errorCode}" retryable=${payoutResult.retryable}`
       );
     }
 

@@ -138,6 +138,12 @@ await runTest("Full payout to test UPI (requires Razorpay keys)", async () => {
   }
 
   if (!data.success) {
+    // Print full response to help diagnose which step failed
+    console.log(`\n   Full response: ${JSON.stringify(data, null, 2)}`);
+    console.log(`\n   \x1b[33mℹ If error is "URL not found":\x1b[0m`);
+    console.log(`     → Razorpay X (Payouts) is not enabled on your account.`);
+    console.log(`     → Go to: https://dashboard.razorpay.com → Razorpay X → Enable`);
+    console.log(`     → Then come back and re-run this test.\n`);
     throw new Error(`Payout failed: ${data.error} (code: ${data.errorCode ?? "none"})`);
   }
 
