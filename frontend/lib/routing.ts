@@ -12,7 +12,7 @@
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export type SettlementProvider = "onmeta" | "transak" | "stripe" | "manual";
+export type SettlementProvider = "onmeta" | "razorpay" | "transak" | "stripe" | "manual";
 export type PaymentRegion      = "IN" | "US" | "EU" | "SEA" | "LATAM" | "unknown";
 export type PaymentMethod      = "upi" | "imps" | "neft" | "ach" | "sepa" | "pix" | "card";
 
@@ -49,6 +49,15 @@ const PROVIDER_MATRIX: Record<SettlementProvider, ProviderCaps> = {
     maxAmountUSD:   5_000,
     minAmountUSD:   0.5,
     live:           true,
+  },
+  razorpay: {
+    regions:        ["IN"],
+    methods:        ["upi"],
+    feePercent:     0.99,   // Razorpay fee: 0.99% + GST on UPI
+    avgTimeSeconds: 15,     // UPI is fast
+    maxAmountUSD:   10_000,
+    minAmountUSD:   0.5,
+    live:           true,   // Sandbox available immediately
   },
   transak: {
     regions:        ["IN", "US", "EU", "SEA"],

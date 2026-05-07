@@ -21,6 +21,7 @@
  */
 
 import type { SettlementProvider } from "@/lib/routing";
+import { initiateRazorpayPayout } from "@/lib/razorpay";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -62,6 +63,61 @@ export interface SettlementResult {
 }
 
 // ── Provider Adapters ─────────────────────────────────────────────────────────
+
+/** Razorpay — India UPI (sandbox available immediately, no KYB) */
+async function settleViaRazorpay(req: SettlementRequest): Promise<SettlementResult> {
+  try {
+    const result = await initiateRazorpayPayout(
+      {
+        amount: req.amount,
+        upiId: req.recipientId,
+        recipientName: req.recipientName,
+        referenceId: req.idempotencyKey,
+        description: `Auron settlement · Tx ${req.txSignature.slice(0, 8)}`,
+      },
+      1 // first attempt
+    );
+
+    if (!result.success) {
+      return {
+        success:           false,
+        provider:          "razorpay",
+        payoutId:          null,
+        referenceNumber:   null,
+        estimatedDelivery: null,
+        feeCharged:        null,
+        error:             result.error ?? "Razorpay payout failed",
+        retryable:         result.retryable !== false,
+        failureCategory:   classifyRazorpayError(result.errorCode),
+      };
+    }
+
+    return {
+      success:           true,
+      provider:          "razorpay",
+      payoutId:          result.payoutId ?? null,
+      referenceNumber:   result.utr ?? null,
+      estimatedDelivery: `within ${result.status === "processed" ? "10 seconds" : "5 minutes"}`,
+      feeCharged:        req.sourceAmountUSDC * 0.0099, // 0.99%
+      error:             null,
+      retryable:         false,
+      failureCategory:   null,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    return {
+      success:           false,
+      provider:          "razorpay",
+      payoutId:          null,
+      referenceNumber:   null,
+      estimatedDelivery: null,
+      feeCharged:        null,
+      error:             `Razorpay exception: ${msg}`,
+      retryable:         true,
+      failureCategory:   "network_error",
+    };
+  }
+}
 
 /** OnMeta — India UPI/IMPS */
 async function settleViaOnmeta(req: SettlementRequest): Promise<SettlementResult> {
@@ -148,10 +204,11 @@ async function settleManual(req: SettlementRequest): Promise<SettlementResult> {
 // ── Dispatch table ────────────────────────────────────────────────────────────
 
 const ADAPTERS: Record<SettlementProvider, (req: SettlementRequest) => Promise<SettlementResult>> = {
-  onmeta:  settleViaOnmeta,
-  transak: settleViaTransak,
-  stripe:  settleViaStripe,
-  manual:  settleManual,
+  onmeta:   settleViaOnmeta,
+  razorpay: settleViaRazorpay,
+  transak:  settleViaTransak,
+  stripe:   settleViaStripe,
+  manual:   settleManual,
 };
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -200,4 +257,18 @@ export async function settlePayment(
   }
 
   return result;
+}
+
+// ── Error Classification ──────────────────────────────────────────────────────
+
+function classifyRazorpayError(errorCode?: string): string {
+  if (!errorCode) return "offramp_rejected";
+  const code = errorCode.toLowerCase();
+  if (code.includes("timeout") || code.includes("gateway"))
+    return "offramp_timeout";
+  if (code.includes("invalid") || code.includes("upi"))
+    return "offramp_rejected";
+  if (code.includes("balance") || code.includes("insufficient"))
+    return "offramp_rejected";
+  return "offramp_rejected";
 }
