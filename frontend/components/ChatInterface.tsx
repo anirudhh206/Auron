@@ -92,7 +92,7 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
   // Live FX rate — refreshes every 60s, falls back to ₹83.15
   const { auronRate } = useLiveRate();
 
-  const { messages, addMessage, pendingTx, setPendingTx, isLoading, setLoading, prefs, dailySpent, dailySpentINR, addDailySpent, addDailySpentINR, addCompletedTx } = useStore();
+  const { messages, addMessage, pendingTx, setPendingTx, isLoading, setLoading, prefs, dailySpent, dailySpentINR, addDailySpent, addDailySpentINR, addCompletedTx, completedTxs } = useStore();
 
   const [input, setInput] = useState("");
   const [isListening, setListening] = useState(false);
@@ -671,15 +671,19 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
       // ── Step 1.5: Risk assessment ───────────────────────────────────────────
       transition("risk_check", "Running security check…");
       const riskNow = Date.now();
+      const oneHourAgo = riskNow - 3_600_000;
+      const recentTxCount  = completedTxs.filter((tx) => tx.timestamp > oneHourAgo).length;
+      const isNewRecipient = !completedTxs.some((tx) => tx.action.upi_id === merchantUpiId);
+
       const risk = assessRisk({
         userId:          address,
         recipientId:     merchantUpiId,
         amountUSDC:      usdcAmount,
         amountINR:       inrAmount,
         dailySpentUSDC:  dailySpent,
-        dailySpentINR:   dailySpentINR,        // INR-based daily cap comparison
-        recentTxCount:   0,                    // TODO: wire to payment history count
-        isNewRecipient:  true,                 // TODO: wire to completed tx lookup
+        dailySpentINR:   dailySpentINR,
+        recentTxCount,
+        isNewRecipient,
       });
 
       // Attach risk metadata to record
