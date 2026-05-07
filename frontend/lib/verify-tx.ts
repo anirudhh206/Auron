@@ -14,7 +14,7 @@
  *   - If a signature IS provided → still verify it (demo doesn't mean skip real checks)
  */
 
-import { Connection, PublicKey } from "@solana/web3.js";
+import { Connection } from "@solana/web3.js";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -136,10 +136,9 @@ export async function verifyUsdcTransfer(
         if ((info.mint as string) !== usdcMint) continue;
       }
 
-      // Verify recipient (destination token account owner or address)
-      const dest = (info.destination as string) ?? "";
-      // For SPL token transfers the destination is a token account, not the owner.
-      // We accept if the treasury address appears anywhere in the accountKeys.
+      // Verify recipient.
+      // SPL token transfers use token accounts, not wallet addresses, as the
+      // destination. The treasury wallet appears in accountKeys as a signer/owner.
       const accountKeys = tx.transaction.message.accountKeys.map(
         (k) => (typeof k === "string" ? k : k.pubkey.toString())
       );
@@ -148,16 +147,33 @@ export async function verifyUsdcTransfer(
       );
       if (!treasuryPresent) continue;
 
-      // Verify amount (with 0.1% tolerance for rounding)
-      const rawAmount   = Number(info.tokenAmount
-        ? (info.tokenAmount as Record<string,unknown>).uiAmount
-        : info.amount) / (parsed.type === "transferChecked" ? 1 : 1_000_000);
-      const tolerance   = params.expectedUsdcAmount * 0.001;
+      // Verify amount with 0.5% tolerance (wider than 0.1% to handle DEX slippage
+      // and SPL token rounding across different wallet implementations).
+      let rawAmount: number;
+      if (parsed.type === "transferChecked") {
+        // transferChecked always carries tokenAmount.uiAmount (float, already in USDC units)
+        const uiAmount = (info.tokenAmount as Record<string, unknown>)?.uiAmount;
+        rawAmount = typeof uiAmount === "number" ? uiAmount : NaN;
+      } else {
+        // transfer carries amount as raw integer string (lamports × 10^-6 for USDC)
+        const rawInt = Number(info.amount);
+        rawAmount = Number.isFinite(rawInt) ? rawInt / 1_000_000 : NaN;
+      }
+
+      if (!Number.isFinite(rawAmount)) {
+        return {
+          verified:      false,
+          demoMode,
+          failureReason: "Could not parse USDC amount from transaction",
+        };
+      }
+
+      const tolerance = params.expectedUsdcAmount * 0.005; // 0.5%
       if (Math.abs(rawAmount - params.expectedUsdcAmount) > tolerance) {
         return {
           verified:      false,
           demoMode,
-          failureReason: `Amount mismatch: expected ${params.expectedUsdcAmount} USDC, found ${rawAmount} USDC`,
+          failureReason: `Amount mismatch: expected ${params.expectedUsdcAmount} USDC, got ${rawAmount.toFixed(6)} USDC`,
           actualAmount:  rawAmount,
         };
       }

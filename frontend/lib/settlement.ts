@@ -21,7 +21,6 @@
  */
 
 import type { SettlementProvider } from "@/lib/routing";
-import { initiateRazorpayPayout } from "@/lib/razorpay";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -64,21 +63,35 @@ export interface SettlementResult {
 
 // ── Provider Adapters ─────────────────────────────────────────────────────────
 
-/** Razorpay — India UPI (sandbox available immediately, no KYB) */
+/**
+ * Razorpay — India UPI (sandbox available immediately, no KYB)
+ *
+ * Security: calls /api/razorpay server route — API secret never in browser.
+ */
 async function settleViaRazorpay(req: SettlementRequest): Promise<SettlementResult> {
-  try {
-    const result = await initiateRazorpayPayout(
-      {
-        amount: req.amount,
-        upiId: req.recipientId,
-        recipientName: req.recipientName,
-        referenceId: req.idempotencyKey,
-        description: `Auron settlement · Tx ${req.txSignature.slice(0, 8)}`,
-      },
-      1 // first attempt
-    );
+  const appUrl = typeof window !== "undefined"
+    ? ""                                                    // browser: relative URL resolves correctly
+    : (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"); // server: need absolute URL
 
-    if (!result.success) {
+  try {
+    const res = await fetch(`${appUrl}/api/razorpay`, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        amount:        req.amount,
+        upiId:         req.recipientId,
+        recipientName: req.recipientName,
+        referenceId:   req.idempotencyKey,
+        description:   `Auron · ${req.txSignature.slice(0, 8)}`,
+      }),
+    });
+
+    const data = await res.json() as {
+      success?: boolean; payoutId?: string; utr?: string; status?: string;
+      error?: string; errorCode?: string; retryable?: boolean;
+    };
+
+    if (!res.ok || !data.success) {
       return {
         success:           false,
         provider:          "razorpay",
@@ -86,19 +99,19 @@ async function settleViaRazorpay(req: SettlementRequest): Promise<SettlementResu
         referenceNumber:   null,
         estimatedDelivery: null,
         feeCharged:        null,
-        error:             result.error ?? "Razorpay payout failed",
-        retryable:         result.retryable !== false,
-        failureCategory:   classifyRazorpayError(result.errorCode),
+        error:             data.error ?? "Razorpay payout failed",
+        retryable:         data.retryable !== false,
+        failureCategory:   classifyRazorpayError(data.errorCode),
       };
     }
 
     return {
       success:           true,
       provider:          "razorpay",
-      payoutId:          result.payoutId ?? null,
-      referenceNumber:   result.utr ?? null,
-      estimatedDelivery: `within ${result.status === "processed" ? "10 seconds" : "5 minutes"}`,
-      feeCharged:        req.sourceAmountUSDC * 0.0099, // 0.99%
+      payoutId:          data.payoutId ?? null,
+      referenceNumber:   data.utr ?? null,
+      estimatedDelivery: `within ${data.status === "processed" ? "10 seconds" : "5 minutes"}`,
+      feeCharged:        req.sourceAmountUSDC * 0.0099, // 0.99% + GST
       error:             null,
       retryable:         false,
       failureCategory:   null,
@@ -112,7 +125,7 @@ async function settleViaRazorpay(req: SettlementRequest): Promise<SettlementResu
       referenceNumber:   null,
       estimatedDelivery: null,
       feeCharged:        null,
-      error:             `Razorpay exception: ${msg}`,
+      error:             `Razorpay network error: ${msg}`,
       retryable:         true,
       failureCategory:   "network_error",
     };

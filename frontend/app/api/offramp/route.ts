@@ -83,10 +83,7 @@ function validate(body: unknown): { ok: true; data: ValidatedRequest } | { ok: f
 
 // ── Provider: OnMeta ──────────────────────────────────────────────────────────
 
-async function callOnMeta(req: ValidatedRequest, attempt: number): Promise<OnMetaPayoutResult> {
-  const apiKey    = process.env.ONMETA_API_KEY;
-  const demoMode  = process.env.DEMO_SETTLEMENT === "true" || !apiKey || apiKey === "demo";
-
+async function callOnMeta(req: ValidatedRequest, attempt: number, demoMode: boolean): Promise<OnMetaPayoutResult> {
   if (demoMode) {
     console.log(`[OnMeta DEMO] attempt=${attempt} paymentId=${req.paymentId}`);
     await new Promise((r) => setTimeout(r, 600 + Math.random() * 400)); // realistic delay
@@ -100,11 +97,12 @@ async function callOnMeta(req: ValidatedRequest, attempt: number): Promise<OnMet
   }
 
   // Production
+  const onmetaKey = process.env.ONMETA_API_KEY!;
   const res = await fetch("https://api.onmeta.in/v1/offramp/initiate", {
     method:  "POST",
     headers: {
       "Content-Type":      "application/json",
-      "x-api-key":         apiKey,
+      "x-api-key":         onmetaKey,
       "x-idempotency-key": req.idempotencyKey,
     },
     body: JSON.stringify({
@@ -146,8 +144,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const validation = validate(body);
   if (!validation.ok) return NextResponse.json({ error: validation.error }, { status: 400 });
 
-  const data       = validation.data;
-  const demoMode   = process.env.DEMO_SETTLEMENT === "true" || !process.env.ONMETA_API_KEY || process.env.ONMETA_API_KEY === "demo";
+  const data     = validation.data;
+  const apiKey   = process.env.ONMETA_API_KEY;
+  const demoMode = process.env.DEMO_SETTLEMENT === "true" || !apiKey || apiKey === "demo";
 
   console.log(`[offramp] START paymentId=${data.paymentId} merchant=${data.merchantUpiId} inr=₹${data.inrAmount} usdc=${data.usdcAmount} demo=${demoMode}`);
 
@@ -204,7 +203,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     result = await withRetry(
       (attempt) => {
         retryCount = attempt - 1;
-        return callOnMeta(data, attempt);
+        return callOnMeta(data, attempt, demoMode);
       },
       {
         maxAttempts:  3,
