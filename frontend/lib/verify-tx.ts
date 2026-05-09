@@ -20,7 +20,7 @@ import { Connection } from "@solana/web3.js";
 
 // USDC mint addresses
 const USDC_MINT_MAINNET = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
-const USDC_MINT_DEVNET  = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
+const USDC_MINT_DEVNET  = "Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr";
 
 // In-memory signature dedup (replace with Redis/DB in production)
 const settledSignatures = new Set<string>();

@@ -42,7 +42,7 @@ export function getConnection(): Connection {
 export const USDC_MINT = new PublicKey(
   NETWORK === "mainnet-beta"
     ? "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
-    : "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+    : "Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr"
 );
 
 // Auron treasury — receives platform fees from Jupiter swaps

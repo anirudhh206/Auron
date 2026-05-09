@@ -54,7 +54,6 @@ import { notifyTxSuccess, notifyTxFailed } from "@/lib/notifications";
 import { usePhantomDeepLink, type MobilePaymentContext } from "@/hooks/usePhantomDeepLink";
 import { assessRisk } from "@/lib/risk";
 import { chooseProvider, detectRegion } from "@/lib/routing";
-import { settlePayment } from "@/lib/settlement";
 
 export interface ChatInterfaceHandle {
   openQRScanner: () => void;
@@ -854,25 +853,74 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
       try {
         transition("offramp_processing", `Processing ₹${inrAmount.toLocaleString("en-IN")} via ${route.provider}…`);
 
-        const settlement = await settlePayment(
-          {
-            paymentId:        record.paymentId,
-            idempotencyKey:   record.idempotencyKey,
-            recipientId:      merchantUpiId,
-            recipientName:    merchantName,
-            amount:           inrAmount,
-            currency:         "INR",
-            method:           "upi",
-            provider:         route.provider,
-            sourceAmountUSDC: usdcAmount,
-            txSignature:      signature,
-            userId:           address,
-          },
-          route.fallback,
-        );
+        // ── Call /v1/pay — ledger-backed settlement endpoint ──────────────
+        const payRes = await fetch("/api/v1/pay", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            paymentId:       record.paymentId,
+            idempotencyKey:  record.idempotencyKey,
+            merchantUpiId,
+            merchantName,
+            inrAmount,
+            usdcAmount,
+            txSignature:     signature,
+            userId:          address,
+            provider:        route.provider,
+            fallbackProvider: route.fallback,
+            quoteFxRate:     quoteFxRate,
+            riskScore:       record.risk?.score,
+            riskFlags:       record.risk?.flags,
+          }),
+        });
 
-        if (!settlement.success) {
-          throw new Error(settlement.error ?? "Payout failed");
+        const payData = await payRes.json() as {
+          success: boolean;
+          payoutId?: string;
+          utrNumber?: string;
+          status?: string;
+          error?: string;
+          errorCode?: string;
+          retryable?: boolean;
+          failureCategory?: string;
+          verifiedTx?: boolean;
+          demoMode?: boolean;
+        };
+
+        if (!payRes.ok || !payData.success) {
+          throw new Error(payData.error ?? "Payout failed");
+        }
+
+        // ── Poll /v1/payment/:id for final status (async settlement path) ─
+        // The worker may still be processing — poll until completed or failed
+        let finalUtr    = payData.utrNumber;
+        let finalPayout = payData.payoutId;
+        let pollStatus  = payData.status ?? "settling";
+
+        if (pollStatus !== "completed" && pollStatus !== "failed") {
+          const POLL_INTERVAL_MS = 2_000;
+          const POLL_TIMEOUT_MS  = 30_000;
+          const pollStart = Date.now();
+
+          while (Date.now() - pollStart < POLL_TIMEOUT_MS) {
+            await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+            try {
+              const statusRes = await fetch(`/api/v1/payment/${record.paymentId}`);
+              if (statusRes.ok) {
+                const s = await statusRes.json() as {
+                  status: string; settlement?: { utr?: string; payoutId?: string };
+                };
+                pollStatus  = s.status;
+                finalUtr    = s.settlement?.utr    ?? finalUtr;
+                finalPayout = s.settlement?.payoutId ?? finalPayout;
+                if (pollStatus === "completed" || pollStatus === "failed") break;
+              }
+            } catch { /* network blip — keep polling */ }
+          }
+        }
+
+        if (pollStatus === "failed") {
+          throw new Error("Payout failed after settlement worker processing");
         }
 
         // ── Step 7: Mark complete + generate receipt ──────────────────────
@@ -880,8 +928,8 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
         const receiptHash = await generateReceiptHash({
           ...record,
           solanaSignature: signature,
-          onmetaPayoutId: settlement.payoutId ?? null,
-          utrNumber: settlement.referenceNumber ?? null,
+          onmetaPayoutId: finalPayout ?? null,
+          utrNumber: finalUtr ?? null,
           confirmedAt: now,
           completedAt: completedNow,
         });
@@ -890,15 +938,15 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
         updateRecord((r) => ({
           ...r,
           status:         "completed",
-          onmetaPayoutId: settlement.payoutId ?? null,
-          utrNumber:      settlement.referenceNumber ?? null,
-          verifiedTx:     (settlement as any).verifiedTx ?? false,
-          demoMode:       (settlement as any).demoMode   ?? false,
+          onmetaPayoutId: finalPayout ?? null,
+          utrNumber:      finalUtr    ?? null,
+          verifiedTx:     payData.verifiedTx ?? false,
+          demoMode:       payData.demoMode   ?? false,
           receiptHash,
           completedAt:    completedNow,
         }));
 
-        const utr = settlement.referenceNumber ? ` · UTR ${settlement.referenceNumber}` : "";
+        const utr = finalUtr ? ` · UTR ${finalUtr}` : "";
         addMessage({
           role: "assistant",
           content: `✅ ₹${inrAmount.toLocaleString("en-IN")} sent to ${merchantName} via UPI${utr}. Tap the tracker to view receipt.`,

@@ -13,7 +13,8 @@
     "run:android": "npx cap run android",
     "sync:android": "npx cap sync android",
     "icons": "node scripts/generate-icons.mjs",
-    "test:razorpay": "node scripts/test-razorpay.mjs"
+    "test:razorpay": "node scripts/test-razorpay.mjs",
+    "test:v1": "node scripts/test-v1-pay.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.0",
