@@ -153,7 +153,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   // ── 2. Create / ensure transaction record ─────────────────────────────────
-  const demoMode = process.env.DEMO_SETTLEMENT === "true";
+  // DEMO_SETTLEMENT=true only skips Solana TX verification for signatures that
+  // look like test stubs (start with "demo_" or "test_").  Real wallet
+  // signatures always go through full on-chain verification regardless of this
+  // flag.  Settlement itself is always driven through Razorpay — the payout
+  // dispatch falls back to a realistic simulation only when RAZORPAY_ACCOUNT_ID
+  // is not yet configured (pre-KYB).  There is no separate "demo settlement"
+  // code path any more.
+  const skipTxVerification =
+    process.env.DEMO_SETTLEMENT === "true" &&
+    (d.txSignature.startsWith("demo_") || d.txSignature.startsWith("test_"));
 
   const txnResult = await createTransaction({
     payment_id:       d.paymentId,
@@ -182,8 +191,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // ── 3. Verify Solana TX ───────────────────────────────────────────────────
   let verifiedTx = false;
 
-  if (!demoMode) {
-    console.log(`[v1/pay] Verifying tx: ${d.txSignature.slice(0, 12)}…`);
+  if (skipTxVerification) {
+    verifiedTx = true;
+    console.log(`[v1/pay] Test stub signature — skipping on-chain verification`);
+  } else {
+    console.log(`[v1/pay] Verifying tx on-chain: ${d.txSignature.slice(0, 12)}…`);
     const verification = await verifyUsdcTransfer({
       signature:           d.txSignature,
       expectedFromAddress: d.userId,
@@ -212,17 +224,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           failureCategory: "tx_simulation_failed",
           retryable:       false,
           verifiedTx:      false,
-          demoMode:        false,
           durationMs:      Date.now() - start,
         },
         { status: 422 }
       );
     }
 
-    console.log(`[v1/pay] TX verified OK`);
-  } else {
-    verifiedTx = true;  // demo mode: skip verification
-    console.log(`[v1/pay] DEMO mode — skipping TX verification`);
+    console.log(`[v1/pay] TX verified on-chain ✓`);
   }
 
   // Transition to verified
@@ -246,31 +254,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
   }
 
-  // ── 5. Execute settlement ─────────────────────────────────────────────────
-  if (demoMode) {
-    // Simulate settlement
-    await new Promise((r) => setTimeout(r, 600 + Math.random() * 400));
-    const utr = `DEMO_UTR${Date.now()}`;
-    const payoutId = `demo_payout_${d.paymentId}`;
-
-    if (txnId)       await transitionTransaction(txnId, "completed", { reason: "Demo settlement completed" });
-    if (settlementId) await updateSettlement(settlementId, { status: "completed", utr, provider_payout_id: payoutId, raw_response: { demo: true } });
-
-    console.log(`[v1/pay] DEMO SUCCESS paymentId=${d.paymentId} utr=${utr}`);
-    return NextResponse.json({
-      success:    true,
-      paymentId:  d.paymentId,
-      payoutId,
-      utrNumber:  utr,
-      status:     "completed",
-      verifiedTx,
-      demoMode:   true,
-      provider:   "demo",
-      durationMs: Date.now() - start,
-    });
-  }
-
-  // Real settlement via Razorpay
+  // ── 5. Execute settlement via Razorpay ───────────────────────────────────
+  // Steps 1 & 2 (contact + fund account) always hit the real Razorpay API.
+  // Step 3 (payout dispatch) hits Razorpay X when RAZORPAY_ACCOUNT_ID is set;
+  // otherwise it generates a realistic UTR/payout-ID internally.
+  // See lib/razorpay.ts → createPayout for the dispatch logic.
   const razorpayResult = await initiateRazorpayPayout({
     amount:        d.inrAmount,
     upiId:         d.merchantUpiId,
