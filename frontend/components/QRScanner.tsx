@@ -125,11 +125,16 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
     setScanned(null);
 
     try {
-      const reader = new BrowserQRCodeReader();
-      const controls = await reader.decodeFromVideoDevice(
-        undefined,
+      const reader = new BrowserQRCodeReader(undefined, {
+        delayBetweenScanAttempts: 200,
+      });
+
+      // Force rear camera on mobile — decodeFromVideoDevice(undefined) often
+      // picks the front camera or fails silently on Android Chrome.
+      const controls = await reader.decodeFromConstraints(
+        { video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } } },
         videoRef.current,
-        (result) => {
+        (result, error) => {
           if (!result) return;
           const parsed = parseQR(result.getText());
           if (parsed) {
@@ -140,9 +145,12 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
       );
       controlsRef.current = controls;
       setIsStarting(false);
-    } catch {
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
       setCameraError(
-        "Camera access denied. Allow camera permission in your browser settings and try again."
+        msg.toLowerCase().includes("permission") || msg.toLowerCase().includes("denied")
+          ? "Camera access denied. Allow camera permission in your browser settings and try again."
+          : "Could not start camera. Make sure no other app is using it, then try again."
       );
       setIsStarting(false);
     }

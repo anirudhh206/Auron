@@ -101,7 +101,12 @@ export function handleConnectResponse(
 
     const result = decrypted as unknown as PhantomConnectResult;
 
-    // Persist session for signing
+    // Validate before persisting — guard against undefined being coerced to string
+    if (!result.publicKey || typeof result.publicKey !== "string") {
+      console.error("[phantom-deeplink] Missing publicKey in Phantom response");
+      return null;
+    }
+
     localStorage.setItem(KEY_PHANTOM_PUBKEY, phantomEncryptionPublicKey);
     localStorage.setItem(KEY_PHANTOM_SESSION, result.session);
     localStorage.setItem("auron_connected_pubkey", result.publicKey);
@@ -199,15 +204,19 @@ export function handleSignResponse(
 // ─── Session helpers ─────────────────────────────────────────────────────────
 export function getConnectedPublicKey(): string | null {
   if (typeof globalThis.window === "undefined") return null;
-  return localStorage.getItem("auron_connected_pubkey");
+  const key = localStorage.getItem("auron_connected_pubkey");
+  // Guard against localStorage storing the literal string "undefined" or "null"
+  if (!key || key === "undefined" || key === "null") return null;
+  return key;
 }
 
 export function isPhantomSessionActive(): boolean {
   if (typeof globalThis.window === "undefined") return false;
+  const pubkey = getConnectedPublicKey();
   return !!(
     localStorage.getItem(KEY_PHANTOM_PUBKEY) &&
     localStorage.getItem(KEY_PHANTOM_SESSION) &&
-    localStorage.getItem("auron_connected_pubkey")
+    pubkey
   );
 }
 
