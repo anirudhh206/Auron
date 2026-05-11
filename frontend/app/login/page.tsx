@@ -465,22 +465,28 @@ export default function LoginPage() {
 
                 <form onSubmit={handleEmailAuth} className="space-y-3">
                   <input
+                    id="email"
+                    name="email"
                     type="email"
                     placeholder="Email address"
                     value={email}
                     onChange={e => setEmail(e.target.value)}
                     required
+                    autoComplete="email"
                     aria-label="Email address"
                     className="login-form-input w-full px-4 py-3 rounded-xl text-sm"
                   />
 
                   <div className="relative">
                     <input
+                      id="password"
+                      name="password"
                       type={showPassword ? "text" : "password"}
                       placeholder="Password"
                       value={password}
                       onChange={e => setPassword(e.target.value)}
                       required
+                      autoComplete={mode === "signin" ? "current-password" : "new-password"}
                       aria-label="Password"
                       className="login-form-input w-full px-4 py-3 pr-11 rounded-xl text-sm"
                     />
@@ -503,11 +509,14 @@ export default function LoginPage() {
                         transition={{ duration: 0.25 }}
                       >
                         <input
+                          id="confirm-password"
+                          name="confirm-password"
                           type={showPassword ? "text" : "password"}
                           placeholder="Confirm password"
                           value={confirmPassword}
                           onChange={e => setConfirmPassword(e.target.value)}
                           required
+                          autoComplete="new-password"
                           aria-label="Confirm password"
                           className="login-form-input w-full px-4 py-3 rounded-xl text-sm mt-3"
                         />
@@ -674,6 +683,8 @@ export default function LoginPage() {
                     🇮🇳 +91
                   </div>
                   <input
+                    id="phone"
+                    name="phone"
                     type="tel"
                     inputMode="numeric"
                     placeholder="10-digit mobile number"
@@ -681,6 +692,7 @@ export default function LoginPage() {
                     onChange={e => setPhoneInput(e.target.value.replace(/\D/g, "").slice(0, 10))}
                     onKeyDown={e => e.key === "Enter" && handleSendOTP()}
                     aria-label="Mobile number"
+                    autoComplete="tel-national"
                     className="login-form-input flex-1 px-4 py-3 rounded-xl text-sm"
                     autoFocus
                   />
@@ -755,6 +767,8 @@ export default function LoginPage() {
                   {otpDigits.map((digit, i) => (
                     <input
                       key={`otp-${i}`}
+                      id={`otp-${i}`}
+                      name={`otp-${i}`}
                       ref={otpRefs[i]}
                       type="text"
                       inputMode="numeric"
@@ -762,6 +776,7 @@ export default function LoginPage() {
                       value={digit}
                       onChange={e => handleOtpInput(i, e.target.value)}
                       onKeyDown={e => handleOtpKeyDown(e, i)}
+                      autoComplete={i === 0 ? "one-time-code" : "off"}
                       aria-label={`OTP digit ${i + 1}`}
                       className={`pin-input w-12 h-14 text-xl font-bold text-center rounded-xl ${digit ? "filled" : ""}`}
                     />

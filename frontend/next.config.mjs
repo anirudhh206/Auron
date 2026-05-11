@@ -72,6 +72,10 @@ export default withPWA({
   register: true,
   skipWaiting: true,
   disable: process.env.NODE_ENV === "development",
+  // Disable inline eval in Workbox runtime to satisfy CSP
+  cacheOnFrontEndNav: true,
+  reloadOnOnline: true,
+  buildExcludes: [/middleware-manifest\.json$/],
   runtimeCaching: [
     {
       // Cache API routes with network-first strategy
