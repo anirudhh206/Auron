@@ -6,6 +6,7 @@ import { motion, useInView } from "framer-motion";
 import {
   Zap, QrCode, ArrowRight, Check, ChevronDown,
   Send, Lock, FileText, ShieldCheck, Shield,
+  Link2, Globe, MessageSquare, Sparkles, Twitter,
 } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────
@@ -26,6 +27,8 @@ export default function Home() {
       <div ref={featRef} />
       <QRSection />
       <ChatSection />
+      <BlinksSection />
+      <SpendingSection />
       <StatementSection />
       <SecuritySection />
       <CTASection onCTA={go} />
@@ -634,6 +637,319 @@ function ChatSection() {
                 </div>
               </div>
             </div>
+          </div>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Blinks — Solana Blinks / shareable pay links
+// ─────────────────────────────────────────────────────────────
+function BlinksSection() {
+  const ref    = useRef(null);
+  const inView = useInView(ref, { once: true, margin: "-80px" });
+
+  const payLinkSteps = [
+    { label: "Say it", text: "Create a pay link for ₹500" },
+    { label: "Share it", text: "auron.xyz/pay/rahul.sol?amount=500" },
+    { label: "Done", text: "₹500 received · 412ms" },
+  ];
+
+  return (
+    <section ref={ref} style={{ padding: "160px 0", background: "rgba(99,102,241,0.02)", borderTop: "1px solid rgba(99,102,241,0.08)" }}>
+      <div className="max-w-[1440px] mx-auto" style={{ padding: "0 64px" }}>
+
+        {/* Header — centered */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }} animate={inView ? { opacity: 1, y: 0 } : {}}
+          transition={{ duration: 0.7 }}
+          className="text-center mb-20 space-y-4 max-w-[680px] mx-auto"
+        >
+          <p style={{ fontSize: "11px", letterSpacing: "0.1em", color: "var(--auron-gold)", textTransform: "uppercase", fontWeight: 700 }}>
+            Solana Blinks · Pay Links
+          </p>
+          <h2 className="font-display font-black" style={{ fontSize: "clamp(2.2rem, 4vw, 3.6rem)", letterSpacing: "-0.03em", color: "#F0EEE8", lineHeight: 1.05 }}>
+            Your payment link works<br />everywhere — even inside a tweet.
+          </h2>
+          <p style={{ fontSize: "16px", lineHeight: 1.75, color: "var(--text-secondary)", letterSpacing: "-0.01em" }}>
+            Say "create a pay link for ₹500." Auron generates a shareable URL that works on WhatsApp, Instagram, X — and as an interactive Solana Blink.
+          </p>
+        </motion.div>
+
+        {/* Three column layout */}
+        <div className="grid lg:grid-cols-3 gap-6 items-stretch">
+
+          {/* Col 1: How it works */}
+          <motion.div
+            initial={{ opacity: 0, y: 24 }} animate={inView ? { opacity: 1, y: 0 } : {}}
+            transition={{ duration: 0.6, delay: 0.05 }}
+            className="rounded-2xl flex flex-col"
+            style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)", padding: "32px" }}
+          >
+            <p style={{ fontSize: "10px", letterSpacing: "0.1em", color: "var(--auron-gold)", textTransform: "uppercase", fontWeight: 700, marginBottom: "16px" }}>How it works</p>
+            <div className="flex-1 space-y-0">
+              {payLinkSteps.map((step, i) => (
+                <div key={step.label} className="flex gap-4 relative">
+                  {i < payLinkSteps.length - 1 && (
+                    <div className="absolute left-[17px] top-9 bottom-0 w-px" style={{ background: "rgba(201,168,76,0.12)" }} />
+                  )}
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 z-10"
+                    style={{ background: "rgba(201,168,76,0.08)", border: "1px solid rgba(201,168,76,0.2)" }}>
+                    <span style={{ fontSize: "11px", fontWeight: 800, color: "#C9A84C" }}>{i + 1}</span>
+                  </div>
+                  <div className="pb-8">
+                    <p style={{ fontSize: "12px", fontWeight: 700, color: "#F0EEE8", marginBottom: "4px" }}>{step.label}</p>
+                    <p style={{ fontSize: "11px", color: "var(--text-muted)", fontFamily: i === 1 ? "monospace" : "inherit", wordBreak: "break-all" }}>{step.text}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+
+          {/* Col 2: Pay Link Card (center) */}
+          <motion.div
+            initial={{ opacity: 0, y: 24 }} animate={inView ? { opacity: 1, y: 0 } : {}}
+            transition={{ duration: 0.6, delay: 0.12 }}
+            className="flex flex-col gap-4"
+          >
+            {/* Link card */}
+            <div className="rounded-2xl flex-1"
+              style={{ background: "rgba(201,168,76,0.04)", border: "1px solid rgba(201,168,76,0.2)", padding: "24px" }}>
+              <div className="flex items-center gap-2 mb-5">
+                <div className="w-8 h-8 rounded-xl btn-gold flex items-center justify-center shrink-0">
+                  <Zap size={13} fill="currentColor" className="text-[#080810]" />
+                </div>
+                <span style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "0.05em", color: "#C9A84C" }}>AURON PAY</span>
+              </div>
+
+              {/* Amount display */}
+              <div className="text-center py-5 rounded-xl mb-4"
+                style={{ background: "rgba(201,168,76,0.06)", border: "1px solid rgba(201,168,76,0.14)" }}>
+                <p className="font-display font-black" style={{ fontSize: "2.8rem", letterSpacing: "-0.04em", color: "#C9A84C" }}>₹500</p>
+                <p style={{ fontSize: "11px", color: "var(--text-muted)", marginTop: "4px" }}>requested from rahul.sol</p>
+              </div>
+
+              {/* Note */}
+              <div className="flex items-center gap-2 mb-5" style={{ color: "var(--text-secondary)", fontSize: "13px" }}>
+                <Globe size={13} style={{ color: "var(--auron-gold)", flexShrink: 0 }} />
+                <span>&ldquo;Dinner at Farzi Café&rdquo;</span>
+              </div>
+
+              {/* CTA */}
+              <div className="flex items-center justify-center gap-2 rounded-xl py-3 btn-gold font-black text-xs text-[#080810]"
+                style={{ letterSpacing: "0.01em" }}>
+                <Zap size={13} fill="currentColor" />
+                Pay with Auron
+                <ArrowRight size={12} />
+              </div>
+
+              {/* URL */}
+              <div className="flex items-center gap-2 mt-4 rounded-lg px-3 py-2"
+                style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                <Link2 size={10} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+                <span style={{ fontSize: "10px", fontFamily: "monospace", color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  auron.xyz/pay/rahul.sol?amount=500&amp;note=Dinner
+                </span>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Col 3: Blink inside X/Twitter */}
+          <motion.div
+            initial={{ opacity: 0, y: 24 }} animate={inView ? { opacity: 1, y: 0 } : {}}
+            transition={{ duration: 0.6, delay: 0.2 }}
+            className="rounded-2xl"
+            style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)", padding: "24px" }}
+          >
+            <div className="flex items-center gap-2 mb-5">
+              <Twitter size={14} style={{ color: "#1d9bf0" }} />
+              <span style={{ fontSize: "11px", fontWeight: 700, color: "rgba(255,255,255,0.5)", letterSpacing: "0.05em" }}>SOLANA BLINK — INSIDE X</span>
+            </div>
+
+            {/* Fake tweet */}
+            <div className="rounded-xl p-4 mb-4" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 font-black text-sm"
+                  style={{ background: "linear-gradient(135deg, rgba(201,168,76,0.3), rgba(201,168,76,0.1))", color: "#C9A84C" }}>
+                  R
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span style={{ fontSize: "12px", fontWeight: 700, color: "#F0EEE8" }}>Rahul Sharma</span>
+                    <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>@rahul.sol</span>
+                  </div>
+                  <p style={{ fontSize: "12px", color: "var(--text-secondary)", lineHeight: 1.5, marginBottom: "10px" }}>
+                    hey @arjun owe me for last night's dinner 🍕<br />
+                    <span style={{ color: "#1d9bf0" }}>auron.xyz/pay/rahul.sol?amount=500</span>
+                  </p>
+
+                  {/* Blink card inside tweet */}
+                  <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(255,255,255,0.1)" }}>
+                    <div className="p-3" style={{ background: "rgba(0,0,0,0.4)" }}>
+                      <div className="flex items-center gap-2 mb-2">
+                        <div className="w-6 h-6 rounded-lg btn-gold flex items-center justify-center shrink-0">
+                          <Zap size={10} fill="currentColor" className="text-[#080810]" />
+                        </div>
+                        <span style={{ fontSize: "10px", fontWeight: 700, color: "#C9A84C" }}>AURON</span>
+                      </div>
+                      <p style={{ fontSize: "11px", fontWeight: 600, color: "#F0EEE8", marginBottom: "2px" }}>Pay ₹500 via Auron</p>
+                      <p style={{ fontSize: "10px", color: "var(--text-muted)" }}>Dinner at Farzi Café — settled in &lt;1 second on Solana</p>
+                      <div className="mt-3 flex items-center justify-center gap-1.5 rounded-lg py-2 btn-gold text-[#080810] text-[10px] font-black">
+                        <Zap size={10} fill="currentColor" />
+                        Pay ₹500
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {[
+                { icon: Sparkles, text: "Works in X, WhatsApp, Instagram bio" },
+                { icon: Globe,    text: "No app download needed to pay" },
+                { icon: Zap,      text: "Interactive — pay without leaving the page" },
+              ].map(({ icon: Icon, text }) => (
+                <div key={text} className="flex items-center gap-2">
+                  <Icon size={11} style={{ color: "#C9A84C", flexShrink: 0 }} />
+                  <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>{text}</span>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Spending Intelligence — AI-powered financial insights
+// ─────────────────────────────────────────────────────────────
+function SpendingSection() {
+  const ref    = useRef(null);
+  const inView = useInView(ref, { once: true, margin: "-80px" });
+
+  const exchanges = [
+    { q: "How much did I spend this week?",       a: "You spent ₹3,840 this week across 12 transactions — ₹1,200 on Swiggy, ₹980 on Ola, and ₹1,660 on other merchants." },
+    { q: "Am I on track with my savings?",         a: "You've locked ₹8,000 this month. At this rate you'll hit ₹24,000 by year-end — great progress!" },
+  ];
+
+  const stats = [
+    { value: "₹3,840", label: "spent this week", positive: false },
+    { value: "₹8,000", label: "locked in savings", positive: true },
+    { value: "12",     label: "transactions", positive: null },
+    { value: "40%",    label: "on food", positive: false },
+  ];
+
+  return (
+    <section ref={ref} style={{ padding: "160px 0", background: "#080810", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+      <div className="max-w-[1440px] mx-auto grid lg:grid-cols-2 items-center" style={{ gap: "80px", padding: "0 64px" }}>
+
+        {/* Left: Chat mockup */}
+        <motion.div
+          initial={{ opacity: 0, x: -32 }} animate={inView ? { opacity: 1, x: 0 } : {}}
+          transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <div className="relative">
+            <div className="absolute -inset-8 pointer-events-none"
+              style={{ background: "radial-gradient(ellipse at 50% 50%, rgba(16,185,129,0.06) 0%, transparent 65%)", filter: "blur(40px)" }} />
+            <div className="relative rounded-[20px] overflow-hidden"
+              style={{ border: "1px solid rgba(255,255,255,0.07)", background: "rgba(11,11,20,0.97)", boxShadow: "0 40px 120px rgba(0,0,0,0.85)" }}>
+              {/* Title bar */}
+              <div className="flex items-center gap-2 px-5 h-11"
+                style={{ background: "rgba(255,255,255,0.02)", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+                {["#FF5F57","#FFBD2E","#28CA41"].map(c => (
+                  <div key={c} className="w-3 h-3 rounded-full" style={{ background: c, opacity: 0.85 }} />
+                ))}
+                <span className="flex-1 text-center" style={{ fontSize: "11px", color: "rgba(255,255,255,0.2)" }}>
+                  Auron — Spending Intelligence
+                </span>
+              </div>
+
+              {/* Stats bar */}
+              <div className="flex items-center gap-px" style={{ borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+                {stats.map(({ value, label, positive }) => (
+                  <div key={label} className="flex-1 px-3 py-3 text-center"
+                    style={{ borderRight: "1px solid rgba(255,255,255,0.04)" }}>
+                    <p style={{
+                      fontSize: "14px", fontWeight: 800, letterSpacing: "-0.02em",
+                      color: positive === true ? "#10b981" : positive === false ? "#f59e0b" : "#F0EEE8",
+                    }}>
+                      {value}
+                    </p>
+                    <p style={{ fontSize: "9px", color: "var(--text-muted)", marginTop: "2px" }}>{label}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Chat */}
+              <div style={{ padding: "20px" }} className="space-y-4">
+                {exchanges.map(({ q, a }, i) => (
+                  <div key={i} className="space-y-2">
+                    <div className="flex justify-end">
+                      <div className="chat-bubble-user" style={{ padding: "8px 14px", fontSize: "11px", fontWeight: 600, maxWidth: "80%" }}>{q}</div>
+                    </div>
+                    <div className="flex gap-2 items-start">
+                      <div className="w-5 h-5 rounded-full btn-gold flex items-center justify-center shrink-0 mt-0.5">
+                        <Sparkles size={9} fill="currentColor" className="text-[#080810]" />
+                      </div>
+                      <div className="chat-bubble-assistant" style={{ padding: "8px 14px", fontSize: "11px", color: "var(--text-secondary)", lineHeight: 1.55, maxWidth: "85%" }}>
+                        {a}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Input */}
+                <div className="flex items-center gap-2 rounded-xl mt-2"
+                  style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", padding: "10px 14px" }}>
+                  <span style={{ flex: 1, fontSize: "11px", color: "rgba(255,255,255,0.18)" }}>Ask about your money…</span>
+                  <MessageSquare size={12} style={{ color: "rgba(201,168,76,0.4)" }} />
+                </div>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Right: Text */}
+        <motion.div
+          initial={{ opacity: 0, x: 32 }} animate={inView ? { opacity: 1, x: 0 } : {}}
+          transition={{ duration: 0.9, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
+          className="space-y-10"
+        >
+          <div className="space-y-5">
+            <p style={{ fontSize: "11px", letterSpacing: "0.1em", color: "var(--auron-gold)", textTransform: "uppercase", fontWeight: 700 }}>
+              Spending Intelligence
+            </p>
+            <h2 className="font-display font-black" style={{ fontSize: "clamp(2.2rem, 4vw, 3.6rem)", letterSpacing: "-0.03em", color: "#F0EEE8", lineHeight: 1.05 }}>
+              Your AI knows exactly where your money goes.
+            </h2>
+            <p style={{ fontSize: "16px", lineHeight: 1.75, color: "var(--text-secondary)", maxWidth: "460px", letterSpacing: "-0.01em" }}>
+              Every transaction is analysed. Ask anything — today, this week, this month. Get instant, conversational answers about your spending patterns and savings progress.
+            </p>
+          </div>
+
+          <div className="space-y-4" style={{ borderTop: "1px solid rgba(255,255,255,0.05)", paddingTop: "32px" }}>
+            {[
+              { q: `"How much did I spend on food this month?"`, hint: "Categorises automatically" },
+              { q: `"Am I saving more than last month?"`,        hint: "Compares across time periods" },
+              { q: `"What were my biggest transactions?"`,       hint: "Sorted, summarised, instant" },
+              { q: `"Is my spending unusual this week?"`,        hint: "Flags anomalies proactively" },
+            ].map(({ q, hint }) => (
+              <div key={q} className="flex items-start gap-3">
+                <div className="w-5 h-5 rounded-md flex items-center justify-center shrink-0 mt-0.5"
+                  style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.2)" }}>
+                  <Check size={10} style={{ color: "#10b981" }} />
+                </div>
+                <div>
+                  <span style={{ fontSize: "13px", fontWeight: 600, color: "#F0EEE8", fontStyle: "italic" }}>{q}</span>
+                  <span style={{ fontSize: "12px", color: "var(--text-muted)", display: "block", marginTop: "1px" }}>{hint}</span>
+                </div>
+              </div>
+            ))}
           </div>
         </motion.div>
       </div>

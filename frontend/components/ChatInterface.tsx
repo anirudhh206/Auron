@@ -30,7 +30,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { useConnection } from "@solana/wallet-adapter-react";
-import { Send, Mic, MicOff, Sparkles, Lock, FileText, ShieldCheck, QrCode, ArrowRight } from "lucide-react";
+import { Send, Mic, MicOff, Sparkles, Lock, FileText, ShieldCheck, QrCode, ArrowRight, Link2, MessageSquare } from "lucide-react";
 import QRScanner, { type ParsedQRResult } from "./QRScanner";
 import { shortAddr, NETWORK } from "@/lib/solana";
 import { runPreflightChecks } from "@/lib/preflight";
@@ -64,9 +64,14 @@ export interface ChatInterfaceHandle {
 const SUGGESTIONS = [
   { icon: Send,        text: "Send ₹500 to Priya",              color: "#7c3aed" },
   { icon: Lock,        text: "Lock ₹2000 for 3 months",         color: "#10b981" },
+  { icon: MessageSquare, text: "How much did I spend this month?", color: "#06b6d4" },
+  { icon: Link2,       text: "Create a pay link for ₹500",      color: "#6366f1" },
   { icon: FileText,    text: "Arjun owes me ₹1500 — save it",   color: "#3b82f6" },
   { icon: ShieldCheck, text: "Prove I own this photo",           color: "#f59e0b" },
 ];
+
+// Actions that don't need a ConfirmCard — they're informational or generate a link
+const INFORMATIONAL_ACTIONS = new Set(["spending_query", "balance_query", "generate_pay_link"]);
 
 const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInterface(_, ref) {
   const { publicKey, connected: walletConnected, sendTransaction } = useWallet();
@@ -246,6 +251,50 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
               addMessage({ role: "assistant", content: event.displayText as string });
             }
             const action = event.action as ParsedAction | null;
+
+            // ── Spending query: call /api/spending and display answer ───────
+            if (action?.action === "spending_query" && address) {
+              try {
+                const sq = await fetch("/api/spending", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    question: msg,
+                    period:   action.query_period ?? "month",
+                    userId:   address,
+                  }),
+                });
+                if (sq.ok) {
+                  const sqData = await sq.json() as { answer?: string };
+                  if (sqData.answer) {
+                    addMessage({ role: "assistant", content: sqData.answer });
+                  }
+                }
+              } catch { /* ignore — displayText already shown */ }
+              continue;
+            }
+
+            // ── Generate pay link: build URL and add to chat ────────────────
+            if (action?.action === "generate_pay_link" && address) {
+              const inr  = action.inr_amount ?? action.amount ?? 0;
+              const note = action.pay_link_note ?? action.note ?? "";
+              const base = typeof window !== "undefined" ? window.location.origin : "https://auron-mocha.vercel.app";
+              let url = `${base}/pay/${address}`;
+              if (inr)  url += `?amount=${inr}&currency=INR`;
+              if (note) url += `${inr ? "&" : "?"}note=${encodeURIComponent(note)}`;
+              addMessage({
+                role: "assistant",
+                content: `🔗 Your pay link is ready!\n\n${url}\n\nShare it on WhatsApp, Instagram, X — anyone can pay you ${inr ? `₹${inr.toLocaleString("en-IN")}` : "any amount"} without downloading an app.`,
+              });
+              if (typeof navigator !== "undefined" && navigator.clipboard) {
+                navigator.clipboard.writeText(url).catch(() => {});
+              }
+              continue;
+            }
+
+            // ── Balance / informational — displayText already set above ──────
+            if (action?.action && INFORMATIONAL_ACTIONS.has(action.action)) continue;
+
             if (action?.action && (typeof action.confidence === "number" ? action.confidence : 0) >= 0.8) {
 
               // ── Recipient resolution (.sol domain / phone number) ──────────

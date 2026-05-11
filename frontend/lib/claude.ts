@@ -9,30 +9,51 @@ export type ActionType =
   | "transfer"
   | "transfer_sol"
   | "transfer_usdc"
-  | "upi_payment"      // Pay Indian merchant via UPI — USDC → Auron treasury → OnMeta → INR to merchant
+  | "upi_payment"         // Pay Indian merchant via UPI — USDC → Auron treasury → OnMeta → INR
   | "stamp_agreement"
   | "lock_savings"
-  | "stamp_ownership";
+  | "stamp_ownership"
+  | "split_payment"       // Split bill between multiple people
+  | "spending_query"      // "How much did I spend this week/month?"
+  | "balance_query"       // "What's my balance?"
+  | "generate_pay_link";  // "Create a pay link for ₹500" → /pay/[address]?amount=500
+
+export interface SplitRecipient {
+  name: string;         // display name or identifier
+  address: string;      // wallet address / .sol domain / phone
+  amount: number;       // their share in INR or USDC
+  amount_usdc: number;
+}
 
 export interface ParsedAction {
   action: ActionType | null;
   amount: number | null;
-  amount_usdc: number | null;   // USDC-denominated amount (from ₹ conversion or explicit USDC)
+  amount_usdc: number | null;   // USDC-denominated amount
   recipient: string | null;
-  // ── UPI payment fields (populated when action === "upi_payment") ──────────
-  upi_id: string | null;        // merchant's UPI ID  e.g. "merchant@paytm"
-  merchant_name: string | null; // merchant display name
-  inr_amount: number | null;    // INR amount merchant will receive
+  // ── UPI payment fields ───────────────────────────────────────────────────
+  upi_id: string | null;
+  merchant_name: string | null;
+  inr_amount: number | null;
+  // ── Split payment fields ─────────────────────────────────────────────────
+  split_recipients: SplitRecipient[] | null;
+  split_total_inr: number | null;
+  // ── Spending query fields ─────────────────────────────────────────────────
+  query_period: "today" | "week" | "month" | "year" | null;
+  query_category: string | null;   // "food", "transfers", "savings", etc.
+  // ── Pay link fields ──────────────────────────────────────────────────────
+  pay_link_note: string | null;    // note to attach to the pay link
   // ─────────────────────────────────────────────────────────────────────────
   note: string | null;
   duration_days: number | null;
   file_hash: string | null;
   file_name: string | null;
   description: string | null;
-  label: string | null;         // Savings lock label
-  vault_id: string | null;      // Legacy — kept for persisted data compatibility
+  label: string | null;
+  vault_id: string | null;
   confidence: number;
   ambiguity: string | null;
+  // Language detected (for multi-language support)
+  detected_language: string | null;
 }
 
 // ─── System prompt — loaded from env var (never committed to git) ─────────────

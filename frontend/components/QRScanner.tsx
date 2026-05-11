@@ -5,6 +5,13 @@ import { useLiveRate } from "@/lib/useLiveRate";
 import { motion, AnimatePresence } from "framer-motion";
 import { BrowserQRCodeReader } from "@zxing/browser";
 import { BarcodeFormat, DecodeHintType } from "@zxing/library";
+
+// Native BarcodeDetector type (Chrome 83+ / Android Chrome)
+declare class BarcodeDetector {
+  constructor(options?: { formats: string[] });
+  detect(source: HTMLVideoElement | HTMLCanvasElement | ImageBitmap): Promise<Array<{ rawValue: string }>>;
+  static getSupportedFormats(): Promise<string[]>;
+}
 import { X, Camera, RefreshCw, CheckCircle2, Zap, ArrowRight, Wallet } from "lucide-react";
 
 // ─── UPI QR ───────────────────────────────────────────────────────────────────
@@ -116,74 +123,126 @@ function shortAddr(addr: string): string {
 export default function QRScanner({ onScan, onClose }: QRScannerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const controlsRef = useRef<{ stop: () => void } | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const scannedRef = useRef(false);
 
   const [scanned, setScanned] = useState<ParsedQRResult | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(true);
 
-  // Live FX rate — keeps USDC estimate in sync with the real spread rate
   const { auronRate } = useLiveRate();
   const fxRate = useMemo(() => auronRate ?? AURON_FX_RATE_FALLBACK, [auronRate]);
 
+  // ── Stop everything ────────────────────────────────────────────────────────
+  const stopAll = useCallback(() => {
+    if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    controlsRef.current?.stop(); controlsRef.current = null;
+    streamRef.current?.getTracks().forEach(t => t.stop()); streamRef.current = null;
+  }, []);
+
+  // ── Native BarcodeDetector engine (Chrome / Android Chrome) ───────────────
+  const startNativeScanner = useCallback(async (video: HTMLVideoElement) => {
+    const detector = new BarcodeDetector({ formats: ["qr_code"] });
+
+    const tick = async () => {
+      if (scannedRef.current) return;
+      if (video.readyState >= 2) {
+        try {
+          const codes = await detector.detect(video);
+          for (const code of codes) {
+            if (scannedRef.current) return;
+            const parsed = parseQR(code.rawValue);
+            if (parsed) {
+              scannedRef.current = true;
+              stopAll();
+              setScanned(parsed);
+              return;
+            }
+          }
+        } catch {
+          // Frame not ready — skip silently
+        }
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+
+    rafRef.current = requestAnimationFrame(tick);
+  }, [stopAll]);
+
+  // ── @zxing fallback engine (Firefox / Safari / older Chrome) ──────────────
+  const startZxingScanner = useCallback(async (video: HTMLVideoElement) => {
+    const hints = new Map<DecodeHintType, unknown>();
+    hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE]);
+    hints.set(DecodeHintType.TRY_HARDER, true);
+
+    const reader = new BrowserQRCodeReader(hints, { delayBetweenScanAttempts: 150 });
+    const controls = await reader.decodeFromConstraints(
+      { video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+      video,
+      (result) => {
+        if (!result || scannedRef.current) return;
+        const parsed = parseQR(result.getText());
+        if (parsed) {
+          scannedRef.current = true;
+          controlsRef.current?.stop();
+          setScanned(parsed);
+        }
+      }
+    );
+    controlsRef.current = controls;
+  }, []);
+
+  // ── Main start: acquire stream then pick engine ────────────────────────────
   const startScanner = useCallback(async () => {
     if (!videoRef.current) return;
     setIsStarting(true);
     setCameraError(null);
     setScanned(null);
+    scannedRef.current = false;
+    stopAll();
 
     try {
-      // Hints: only scan QR codes, try harder for small/tilted codes
-      const hints = new Map<DecodeHintType, unknown>();
-      hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE]);
-      hints.set(DecodeHintType.TRY_HARDER, true);
-
-      const reader = new BrowserQRCodeReader(hints, {
-        delayBetweenScanAttempts: 100,
+      // Acquire camera stream manually so we fully control it
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } },
       });
+      streamRef.current = stream;
 
-      // Force rear camera on mobile
-      const controls = await reader.decodeFromConstraints(
-        {
-          video: {
-            facingMode: { ideal: "environment" },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-          },
-        },
-        videoRef.current,
-        (result, _error) => {
-          if (!result) return;
-          const parsed = parseQR(result.getText());
-          if (parsed) {
-            controlsRef.current?.stop();
-            setScanned(parsed);
-          }
-        }
-      );
-      controlsRef.current = controls;
+      const video = videoRef.current;
+      video.srcObject = stream;
+      await video.play();
       setIsStarting(false);
+
+      // Use native BarcodeDetector if available (Chrome / Android) else @zxing
+      const hasNative = "BarcodeDetector" in window;
+      if (hasNative) {
+        await startNativeScanner(video);
+      } else {
+        await startZxingScanner(video);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
       const name = err instanceof DOMException ? err.name : "";
       let errorText: string;
       if (name === "NotAllowedError" || msg.toLowerCase().includes("permission") || msg.toLowerCase().includes("denied")) {
-        errorText = "Camera permission denied. Tap the camera icon in your browser's address bar and allow access, then tap Try Again.";
-      } else if (name === "NotFoundError" || msg.toLowerCase().includes("not found")) {
+        errorText = "Camera permission denied. Tap the lock icon in the address bar → allow Camera, then tap Try Again.";
+      } else if (name === "NotFoundError") {
         errorText = "No camera found on this device.";
-      } else if (name === "NotReadableError" || msg.toLowerCase().includes("in use")) {
+      } else if (name === "NotReadableError") {
         errorText = "Camera is in use by another app. Close it and try again.";
       } else {
-        errorText = "Could not start camera. Try reloading the page or use a different browser.";
+        errorText = `Could not start camera: ${msg || "unknown error"}. Try reloading.`;
       }
       setCameraError(errorText);
       setIsStarting(false);
     }
-  }, []);
+  }, [startNativeScanner, startZxingScanner, stopAll]);
 
   useEffect(() => {
     startScanner();
-    return () => { controlsRef.current?.stop(); };
-  }, [startScanner]);
+    return () => stopAll();
+  }, [startScanner, stopAll]);
 
   function handlePay() {
     if (scanned) onScan(scanned);
@@ -191,6 +250,7 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
 
   function handleScanAgain() {
     setScanned(null);
+    scannedRef.current = false;
     startScanner();
   }
 
