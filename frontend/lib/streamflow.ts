@@ -12,13 +12,21 @@
  * Docs: https://docs.streamflow.finance
  */
 
-import { getBN, StreamflowSolana, Types } from "@streamflow/stream";
+import {
+  getBN,
+  StreamflowSolana,
+  ICluster,
+  StreamType,
+  StreamDirection,
+  type ICreateStreamData,
+} from "@streamflow/stream";
+import type { SignerWalletAdapter } from "@solana/wallet-adapter-base";
 import { NETWORK, USDC_MINT } from "./solana";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const STREAMFLOW_CLUSTER: "devnet" | "mainnet" =
-  NETWORK === "mainnet-beta" ? "mainnet" : "devnet";
+const STREAMFLOW_CLUSTER: ICluster =
+  NETWORK === "mainnet-beta" ? ICluster.Mainnet : ICluster.Devnet;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -59,7 +67,7 @@ function getStreamflowClient(rpcUrl: string): StreamflowSolana.SolanaStreamClien
 // Neither Auron nor the user can unlock early (cancelableBySender: false).
 export async function createSavingsLock(
   params: LockParams,
-  wallet: Types.ITransactionSigner,
+  wallet: SignerWalletAdapter,
   rpcUrl: string
 ): Promise<LockResult> {
   const { amountUsdc, durationDays, label, ownerAddress } = params;
@@ -73,7 +81,7 @@ export async function createSavingsLock(
   const cliffTimestamp = nowSeconds + durationDays * 86_400;
   const amountBN = getBN(amountUsdc, 6); // USDC = 6 decimals
 
-  const createParams: Types.ICreateStreamData = {
+  const createParams: ICreateStreamData = {
     recipient: ownerAddress,          // user gets their own money back at unlock
     tokenId: USDC_MINT.toString(),
     start: nowSeconds + 10,           // stream starts ~10s from now
@@ -92,7 +100,8 @@ export async function createSavingsLock(
     withdrawalFrequency: 60,
   };
 
-  const { metadataId, txId } = await client.create(createParams, { sender: wallet });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { metadataId, txId } = await client.create(createParams, { sender: wallet as any });
 
   const cluster = NETWORK === "mainnet-beta" ? "" : "?cluster=devnet";
   const explorerUrl = `https://solscan.io/tx/${txId}${cluster}`;
@@ -116,16 +125,16 @@ export async function getSavingsLockStatus(
   const client = getStreamflowClient(rpcUrl);
   const stream = await client.getOne({ id: contractId });
 
-  const cliffTime = Number(stream.cliff) * 1000;
+  const cliffTime = stream.cliff * 1000;
   const isUnlocked = Date.now() >= cliffTime;
-  const amountUsdc = Number(stream.depositedAmount) / 1_000_000;
+  const amountUsdc = stream.depositedAmount.toNumber() / 1_000_000;
 
   return {
     contractId,
     amountUsdc,
     unlockAt: new Date(cliffTime),
     isUnlocked,
-    withdrawn: stream.withdrawn.gt(getBN(0, 6)),
+    withdrawn: stream.withdrawnAmount.gt(getBN(0, 6)),
     label: stream.name,
   };
 }
@@ -138,21 +147,21 @@ export async function getAllSavingsLocks(
 ): Promise<LockStatus[]> {
   const client = getStreamflowClient(rpcUrl);
   const streams = await client.get({
-    wallet: walletAddress,
-    type: Types.StreamType.All,
-    direction: Types.StreamDirection.Incoming,
+    address: walletAddress,
+    type: StreamType.All,
+    direction: StreamDirection.Incoming,
   });
 
   return streams
     .filter(([, s]) => s.name.startsWith("Auron"))
     .map(([id, s]) => {
-      const cliffTime = Number(s.cliff) * 1000;
+      const cliffTime = s.cliff * 1000;
       return {
         contractId: id,
-        amountUsdc: Number(s.depositedAmount) / 1_000_000,
+        amountUsdc: s.depositedAmount.toNumber() / 1_000_000,
         unlockAt: new Date(cliffTime),
         isUnlocked: Date.now() >= cliffTime,
-        withdrawn: s.withdrawn.gt(getBN(0, 6)),
+        withdrawn: s.withdrawnAmount.gt(getBN(0, 6)),
         label: s.name,
       };
     });

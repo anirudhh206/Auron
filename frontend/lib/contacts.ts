@@ -162,16 +162,16 @@ export async function activateContactInNetworks(newUserSupabaseUid: string): Pro
 
   if (newUser.wallet_address) {
     updates.push(
-      supabase.from("contacts")
+      (supabase.from("contacts")
         .update({ is_auron_user: true, contact_user_id: newUser.id })
-        .eq("wallet_address", newUser.wallet_address)
+        .eq("wallet_address", newUser.wallet_address) as unknown as Promise<unknown>)
     );
   }
   if (newUser.phone) {
     updates.push(
-      supabase.from("contacts")
+      (supabase.from("contacts")
         .update({ is_auron_user: true, contact_user_id: newUser.id })
-        .eq("upi_id", newUser.phone)
+        .eq("upi_id", newUser.phone) as unknown as Promise<unknown>)
     );
   }
 

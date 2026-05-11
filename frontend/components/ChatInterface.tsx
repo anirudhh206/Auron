@@ -46,7 +46,7 @@ import {
   buildUPIPayment,
   buildAgreementStamp,
   buildOwnershipStamp,
-  buildSavingsLock,
+  buildSavingsLockPreview as buildSavingsLock,
   sha256,
   type BuildResult,
 } from "@/lib/contracts";
@@ -54,6 +54,7 @@ import { notifyTxSuccess, notifyTxFailed } from "@/lib/notifications";
 import { usePhantomDeepLink, type MobilePaymentContext } from "@/hooks/usePhantomDeepLink";
 import { assessRisk } from "@/lib/risk";
 import { chooseProvider, detectRegion } from "@/lib/routing";
+import { resolveRecipient } from "@/lib/resolve-recipient";
 
 export interface ChatInterfaceHandle {
   openQRScanner: () => void;
@@ -246,9 +247,43 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
             }
             const action = event.action as ParsedAction | null;
             if (action?.action && (typeof action.confidence === "number" ? action.confidence : 0) >= 0.8) {
+
+              // ── Recipient resolution (.sol domain / phone number) ──────────
+              // Resolve before showing the ConfirmCard so the user sees
+              // "Send ₹500 to priya.sol" with a verified address underneath.
+              const isTransfer = ["transfer", "transfer_sol", "transfer_usdc"].includes(action.action ?? "");
+              let resolvedAction = action;
+              let resolvedConfirmText = String(event.confirmText ?? "");
+
+              if (isTransfer && action.recipient) {
+                try {
+                  const resolved = await resolveRecipient(action.recipient);
+
+                  // Replace the raw recipient with the resolved wallet address
+                  resolvedAction = { ...action, recipient: resolved.address };
+
+                  // Update confirm text: show display name (e.g. "priya.sol")
+                  // instead of a truncated wallet address
+                  if (resolved.type !== "wallet") {
+                    resolvedConfirmText = resolvedConfirmText.replace(
+                      action.recipient,
+                      resolved.display
+                    );
+                    // Append resolved address in small print for transparency
+                    resolvedConfirmText += ` (${resolved.address.slice(0, 4)}…${resolved.address.slice(-4)})`;
+                  }
+                } catch (resolveErr: unknown) {
+                  // Resolution failed — show the error instead of the ConfirmCard
+                  const errMsg = resolveErr instanceof Error ? resolveErr.message : "Could not resolve recipient.";
+                  addMessage({ role: "assistant", content: `❌ ${errMsg}` });
+                  setLoading(false);
+                  return;
+                }
+              }
+
               setPendingTx({
-                action,
-                confirmText: String(event.confirmText ?? ""),
+                action: resolvedAction,
+                confirmText: resolvedConfirmText,
                 securityFlags: (event.securityFlags as any[]) ?? [],
                 requiresSlowdown: Boolean(event.requiresSlowdown),
               });

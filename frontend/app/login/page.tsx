@@ -5,17 +5,27 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import { useStore } from "@/store/useStore";
-import { Zap, Eye, EyeOff, Check, ArrowRight, Loader2, ChevronRight } from "lucide-react";
+import { Zap, Eye, EyeOff, Check, ArrowRight, Loader2, ChevronRight, Phone, ShieldCheck } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────
 type AuthMode = "signin" | "signup";
-type AuthStep = "auth" | "pin" | "pin-confirm" | "welcome";
+type AuthStep = "auth" | "pin" | "pin-confirm" | "phone" | "otp" | "welcome";
 
-// ── Carousel items per master prompt ─────────────────────────
+// ── Phone normalisation ───────────────────────────────────────
+function normalisePhone(raw: string): string | null {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 10) return `+91${digits}`;
+  if (digits.length === 12 && digits.startsWith("91")) return `+${digits}`;
+  if (digits.length === 13 && digits.startsWith("091")) return `+${digits.slice(1)}`;
+  if (raw.trim().startsWith("+") && digits.length >= 7) return `+${digits}`;
+  return null;
+}
+
+// ── Carousel items ────────────────────────────────────────────
 const CAROUSEL_ITEMS = [
   {
     action: "You sent ₹500 to Priya Sharma",
-    detail: "Permanently recorded on Initia blockchain",
+    detail: "Permanently recorded on Solana blockchain",
     time: "Apr 12, 2026 — 3:42 PM",
   },
   {
@@ -62,6 +72,20 @@ export default function LoginPage() {
     useRef<HTMLInputElement>(null),
   ];
 
+  // Phone + OTP state
+  const [phoneInput, setPhoneInput] = useState("");
+  const [phoneE164, setPhoneE164] = useState("");
+  const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
+  const [otpResendCooldown, setOtpResendCooldown] = useState(0);
+  const otpRefs = [
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+    useRef<HTMLInputElement>(null),
+  ];
+
   // Redirect if already logged in
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -75,15 +99,20 @@ export default function LoginPage() {
     return () => clearInterval(t);
   }, []);
 
+  // OTP resend cooldown countdown
+  useEffect(() => {
+    if (otpResendCooldown <= 0) return;
+    const t = setInterval(() => setOtpResendCooldown(n => n - 1), 1000);
+    return () => clearInterval(t);
+  }, [otpResendCooldown]);
+
   // ── Auth handlers ─────────────────────────────────────────
   async function handleGoogle() {
     setLoading(true);
     setError("");
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/api/auth/callback`,
-      },
+      options: { redirectTo: `${window.location.origin}/api/auth/callback` },
     });
     if (error) { setError(error.message); setLoading(false); }
   }
@@ -111,7 +140,6 @@ export default function LoginPage() {
     }
 
     setLoading(false);
-    // After auth, go to PIN setup
     setStep("pin");
     setTimeout(() => pinRefs[0].current?.focus(), 100);
   }
@@ -137,9 +165,7 @@ export default function LoginPage() {
     idx: number,
     refs: React.RefObject<HTMLInputElement | null>[]
   ) {
-    if (e.key === "Backspace" && idx > 0) {
-      refs[idx - 1].current?.focus();
-    }
+    if (e.key === "Backspace" && idx > 0) refs[idx - 1].current?.focus();
   }
 
   function handlePinSubmit() {
@@ -160,7 +186,6 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
 
-    // Hash the PIN server-side
     const res = await fetch("/api/hash-pin", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -173,23 +198,139 @@ export default function LoginPage() {
       return;
     }
 
-    // Hash response contains hash
     const { hash } = await res.json();
-
-    // Generate .init username from email/session
     const { data: { user } } = await supabase.auth.getUser();
     const base = user?.user_metadata?.full_name?.split(" ")[0]?.toLowerCase()
       ?? user?.email?.split("@")[0]?.toLowerCase()
       ?? "user";
-    const generatedUsername = `${base}.init`;
-    setUsername(generatedUsername);
-
-    // Mark as onboarded and store PIN hash
+    setUsername(`${base}.init`);
     setPrefs({ hasOnboarded: true, pin: hash });
+    setLoading(false);
+
+    // Only show phone step for new sign-ups — sign-in goes straight to app
+    if (mode === "signup") {
+      setStep("phone");
+    } else {
+      setStep("welcome");
+    }
+  }
+
+  // ── Phone / OTP handlers ──────────────────────────────────
+
+  async function handleSendOTP() {
+    setError("");
+    const e164 = normalisePhone(phoneInput);
+    if (!e164) {
+      setError("Enter a valid Indian mobile number (10 digits).");
+      return;
+    }
+
+    setLoading(true);
+    // Uses Supabase's built-in phone_change flow — sends OTP to the number
+    const { error } = await supabase.auth.updateUser({ phone: e164 });
+    setLoading(false);
+
+    if (error) {
+      // Surface friendly messages for common errors
+      if (error.message.toLowerCase().includes("rate")) {
+        setError("Too many attempts. Please wait a minute and try again.");
+      } else if (error.message.toLowerCase().includes("invalid")) {
+        setError("Invalid phone number. Check and try again.");
+      } else {
+        setError(error.message);
+      }
+      return;
+    }
+
+    setPhoneE164(e164);
+    setOtpDigits(["", "", "", "", "", ""]);
+    setOtpResendCooldown(60);
+    setStep("otp");
+    setTimeout(() => otpRefs[0].current?.focus(), 100);
+  }
+
+  async function handleVerifyOTP() {
+    const token = otpDigits.join("");
+    if (token.length < 6) { setError("Enter the full 6-digit code."); return; }
+
+    setLoading(true);
+    setError("");
+
+    // Verify the OTP with Supabase
+    const { error: otpErr } = await supabase.auth.verifyOtp({
+      phone: phoneE164,
+      token,
+      type: "phone_change",
+    });
+
+    if (otpErr) {
+      setLoading(false);
+      if (otpErr.message.toLowerCase().includes("expired")) {
+        setError("Code expired. Tap Resend to get a new one.");
+      } else if (otpErr.message.toLowerCase().includes("invalid")) {
+        setError("Incorrect code. Please check and try again.");
+      } else {
+        setError(otpErr.message);
+      }
+      return;
+    }
+
+    // OTP verified — persist phone to our users table
+    const res = await fetch("/api/auth/verify-phone", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone: phoneE164 }),
+    });
 
     setLoading(false);
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({})) as { error?: string };
+      setError(data.error ?? "Failed to save phone. Please try again.");
+      return;
+    }
+
     setStep("welcome");
   }
+
+  async function handleResendOTP() {
+    if (otpResendCooldown > 0) return;
+    setError("");
+    setLoading(true);
+    const { error } = await supabase.auth.updateUser({ phone: phoneE164 });
+    setLoading(false);
+    if (error) {
+      setError(error.message);
+    } else {
+      setOtpDigits(["", "", "", "", "", ""]);
+      setOtpResendCooldown(60);
+      setTimeout(() => otpRefs[0].current?.focus(), 100);
+    }
+  }
+
+  function handleOtpInput(idx: number, value: string) {
+    if (!/^\d?$/.test(value)) return;
+    setOtpDigits(prev => {
+      const next = [...prev];
+      next[idx] = value;
+      return next;
+    });
+    if (value && idx < 5) otpRefs[idx + 1].current?.focus();
+  }
+
+  function handleOtpKeyDown(e: React.KeyboardEvent, idx: number) {
+    if (e.key === "Backspace" && !otpDigits[idx] && idx > 0) {
+      otpRefs[idx - 1].current?.focus();
+    }
+  }
+
+  // Auto-submit when all 6 digits filled
+  useEffect(() => {
+    if (step === "otp" && otpDigits.every(d => d !== "")) {
+      handleVerifyOTP();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [otpDigits, step]);
 
   // ── Render ────────────────────────────────────────────────
   return (
@@ -197,7 +338,6 @@ export default function LoginPage() {
 
       {/* ── Left panel — brand story ─────────────────────── */}
       <div className="login-left-panel hidden lg:flex lg:w-[45%] flex-col justify-between p-10 relative overflow-hidden">
-        {/* Gold glow at bottom */}
         <div className="absolute bottom-0 left-0 right-0 h-64 pointer-events-none" />
 
         {/* Logo */}
@@ -223,25 +363,22 @@ export default function LoginPage() {
                 transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
                 className="login-carousel-card rounded-2xl p-5"
               >
-                {/* Header */}
                 <div className="flex items-center gap-3 mb-4 pb-4 border-b border-gold-dim/10">
                   <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-success/15 border border-success/25">
                     <Check size={15} className="text-success" />
                   </div>
                   <div>
                     <p className="text-xs font-bold text-text-primary">What just happened</p>
-                    <p className="text-[10px] text-text-muted">Confirmed on Initia blockchain</p>
+                    <p className="text-[10px] text-text-muted">Confirmed on Solana blockchain</p>
                   </div>
                 </div>
-
                 <p className="text-sm font-medium mb-4 text-text-primary">
                   {CAROUSEL_ITEMS[carouselIdx].action}
                 </p>
-
                 <div className="space-y-2 text-xs">
                   <div className="flex justify-between">
                     <span className="text-text-muted">Recorded on</span>
-                    <span className="text-text-secondary">Auron · Initia blockchain</span>
+                    <span className="text-text-secondary">Auron · Solana</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-text-muted">Time</span>
@@ -252,29 +389,26 @@ export default function LoginPage() {
                     <span className="font-semibold text-success">No. Ever.</span>
                   </div>
                 </div>
-
                 <p className="text-[10px] mt-4 pt-3 italic text-text-muted border-t border-gold-dim/5">
                   {CAROUSEL_ITEMS[carouselIdx].detail}
                 </p>
               </motion.div>
             </AnimatePresence>
 
-            {/* Carousel dots */}
             <div className="flex justify-center gap-2 mt-5">
               {CAROUSEL_ITEMS.map((_, i) => (
                 <button
                   key={`carousel-dot-${i}`}
                   onClick={() => setCarouselIdx(i)}
-                  className={`carousel-dot ${i === carouselIdx ? 'active' : ''} h-1.5`}
+                  className={`carousel-dot ${i === carouselIdx ? "active" : ""} h-1.5`}
                   aria-label={`Go to carousel item ${i + 1}`}
-                  aria-current={i === carouselIdx ? 'page' : undefined}
+                  aria-current={i === carouselIdx ? "page" : undefined}
                 />
               ))}
             </div>
           </div>
         </div>
 
-        {/* Bottom tagline */}
         <p className="relative z-10 text-sm italic text-text-muted">
           &quot;The blockchain was invisible. That was the point.&quot;
         </p>
@@ -283,7 +417,6 @@ export default function LoginPage() {
       {/* ── Right panel — auth form ──────────────────────── */}
       <div className="flex-1 flex items-center justify-center p-6 sm:p-10 bg-bg-surface">
         <div className="w-full max-w-md">
-
           <AnimatePresence mode="wait">
 
             {/* ── Step: Auth form ────────────────────────── */}
@@ -295,7 +428,6 @@ export default function LoginPage() {
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
               >
-                {/* Mobile logo */}
                 <div className="flex items-center gap-2 mb-8 lg:hidden">
                   <div className="login-logo-icon w-8 h-8 rounded-xl flex items-center justify-center">
                     <Zap size={14} fill="currentColor" className="text-[#0A0A0F]" aria-hidden="true" />
@@ -310,7 +442,6 @@ export default function LoginPage() {
                   Sign in or create your account in 10 seconds.
                 </p>
 
-                {/* Google OAuth */}
                 <motion.button
                   onClick={handleGoogle}
                   disabled={loading}
@@ -319,25 +450,19 @@ export default function LoginPage() {
                   className="login-button-secondary w-full flex items-center justify-center gap-3 py-3.5 rounded-xl font-semibold text-sm mb-2"
                   aria-label="Continue with Google"
                 >
-                  {loading ? (
-                    <Loader2 size={18} className="animate-spin" aria-hidden="true" />
-                  ) : (
-                    <GoogleIcon />
-                  )}
+                  {loading ? <Loader2 size={18} className="animate-spin" aria-hidden="true" /> : <GoogleIcon />}
                   Continue with Google
                 </motion.button>
                 <p className="text-center text-xs mb-6" style={{ color: "var(--text-muted)" }}>
                   Your wallet is created automatically. No setup required.
                 </p>
 
-                {/* Divider */}
                 <div className="flex items-center gap-3 mb-6">
                   <div className="login-divider flex-1 h-px" />
                   <span className="text-xs text-text-muted">or continue with email</span>
                   <div className="login-divider flex-1 h-px" />
                 </div>
 
-                {/* Email form */}
                 <form onSubmit={handleEmailAuth} className="space-y-3">
                   <input
                     type="email"
@@ -390,7 +515,6 @@ export default function LoginPage() {
                     )}
                   </AnimatePresence>
 
-                  {/* Error */}
                   <AnimatePresence>
                     {error && (
                       <motion.p
@@ -411,13 +535,13 @@ export default function LoginPage() {
                     className="w-full btn-gold py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 mt-1"
                     aria-busy={loading}
                   >
-                    {loading ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : (
-                      <>Enter Auron <ArrowRight size={15} aria-hidden="true" /></>
-                    )}
+                    {loading
+                      ? <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+                      : <>{mode === "signin" ? "Sign in" : "Create account"} <ArrowRight size={15} aria-hidden="true" /></>
+                    }
                   </motion.button>
                 </form>
 
-                {/* Toggle mode */}
                 <div className="mt-5 text-center">
                   <button
                     onClick={() => { setMode(m => m === "signin" ? "signup" : "signin"); setError(""); }}
@@ -435,7 +559,7 @@ export default function LoginPage() {
               </motion.div>
             )}
 
-            {/* ── Step: PIN setup ───────────────────────── */}
+            {/* ── Step: PIN setup / confirm ─────────────── */}
             {(step === "pin" || step === "pin-confirm") && (
               <motion.div
                 key={step}
@@ -448,18 +572,12 @@ export default function LoginPage() {
                 <div className="w-14 h-14 rounded-2xl btn-gold flex items-center justify-center mx-auto mb-6">
                   <Zap size={24} fill="currentColor" className="text-[#0A0A0F]" />
                 </div>
-
                 <h2 className="font-display font-bold text-2xl sm:text-3xl mb-2 text-text-primary">
                   {step === "pin" ? "Set your PIN" : "Confirm your PIN"}
                 </h2>
-                <p className="text-sm mb-2 text-text-secondary">
-                  This PIN protects your transactions.
-                </p>
-                <p className="text-xs mb-10 text-text-muted">
-                  We never store it. Only you know it.
-                </p>
+                <p className="text-sm mb-2 text-text-secondary">This PIN protects your transactions.</p>
+                <p className="text-xs mb-10 text-text-muted">We never store it. Only you know it.</p>
 
-                {/* PIN boxes */}
                 <div className="flex justify-center gap-4 mb-6">
                   {(step === "pin" ? pin : pinConfirm).map((digit, i) => (
                     <input
@@ -476,7 +594,7 @@ export default function LoginPage() {
                       )}
                       onKeyDown={e => handlePinKeyDown(e, i, step === "pin" ? pinRefs : pinConfirmRefs)}
                       aria-label={`PIN digit ${i + 1}`}
-                      className={`pin-input w-16 h-16 text-2xl font-bold text-center rounded-2xl ${digit ? 'filled' : ''}`}
+                      className={`pin-input w-16 h-16 text-2xl font-bold text-center rounded-2xl ${digit ? "filled" : ""}`}
                     />
                   ))}
                 </div>
@@ -501,21 +619,196 @@ export default function LoginPage() {
                   className="btn-gold px-10 py-3.5 rounded-xl font-bold text-sm flex items-center gap-2 mx-auto disabled:opacity-40"
                   aria-busy={loading}
                 >
-                  {loading ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : (
-                    <>{step === "pin" ? "Next" : "Confirm PIN"} <ChevronRight size={16} aria-hidden="true" /></>
-                  )}
+                  {loading
+                    ? <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+                    : <>{step === "pin" ? "Next" : "Confirm PIN"} <ChevronRight size={16} aria-hidden="true" /></>
+                  }
                 </motion.button>
 
-                {/* Step indicator */}
                 <progress
-                  value={step === "pin" ? 50 : 100}
+                  value={step === "pin" ? 33 : 66}
                   max={100}
                   className="w-32 h-1 mx-auto mt-8 rounded-full"
-                  aria-label="PIN setup progress"
+                  aria-label="Sign-up progress"
                 />
                 <p className="text-xs text-text-muted mt-3">
-                  Step {step === "pin" ? 1 : 2} of 2
+                  Step {step === "pin" ? 1 : 2} of 3
                 </p>
+              </motion.div>
+            )}
+
+            {/* ── Step: Phone number entry ──────────────── */}
+            {step === "phone" && (
+              <motion.div
+                key="phone"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.4 }}
+                className="text-center"
+              >
+                {/* Icon */}
+                <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-6"
+                  style={{ background: "rgba(201,168,76,0.12)", border: "1px solid rgba(201,168,76,0.3)" }}>
+                  <Phone size={24} style={{ color: "#C9A84C" }} />
+                </div>
+
+                <h2 className="font-display font-bold text-2xl sm:text-3xl mb-2 text-text-primary">
+                  Add your phone
+                </h2>
+                <p className="text-sm mb-2 text-text-secondary">
+                  So friends can send money to your number.
+                </p>
+                <p className="text-xs mb-8 text-text-muted">
+                  We&apos;ll send a 6-digit OTP to verify it&apos;s yours.
+                </p>
+
+                {/* Phone input with +91 prefix */}
+                <div className="flex gap-2 mb-4 text-left">
+                  <div className="flex items-center gap-2 px-4 rounded-xl shrink-0 text-sm font-medium"
+                    style={{
+                      background: "rgba(255,255,255,0.04)",
+                      border: "1px solid rgba(255,255,255,0.1)",
+                      color: "rgba(255,255,255,0.5)",
+                    }}>
+                    🇮🇳 +91
+                  </div>
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    placeholder="10-digit mobile number"
+                    value={phoneInput}
+                    onChange={e => setPhoneInput(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                    onKeyDown={e => e.key === "Enter" && handleSendOTP()}
+                    aria-label="Mobile number"
+                    className="login-form-input flex-1 px-4 py-3 rounded-xl text-sm"
+                    autoFocus
+                  />
+                </div>
+
+                <AnimatePresence>
+                  {error && (
+                    <motion.p
+                      initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                      className="text-xs mb-4 text-error text-left px-1"
+                      role="alert"
+                    >
+                      {error}
+                    </motion.p>
+                  )}
+                </AnimatePresence>
+
+                <motion.button
+                  onClick={handleSendOTP}
+                  disabled={loading || phoneInput.length < 10}
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.99 }}
+                  className="w-full btn-gold py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-40"
+                  aria-busy={loading}
+                >
+                  {loading
+                    ? <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+                    : <>Send OTP <ArrowRight size={15} aria-hidden="true" /></>
+                  }
+                </motion.button>
+
+                {/* Skip option */}
+                <button
+                  onClick={() => setStep("welcome")}
+                  className="mt-4 text-xs text-text-muted hover:text-text-secondary transition-colors"
+                >
+                  Skip for now — I&apos;ll add it later
+                </button>
+
+                <progress value={66} max={100} className="w-32 h-1 mx-auto mt-8 rounded-full" aria-label="Sign-up progress" />
+                <p className="text-xs text-text-muted mt-3">Step 3 of 3</p>
+              </motion.div>
+            )}
+
+            {/* ── Step: OTP verification ────────────────── */}
+            {step === "otp" && (
+              <motion.div
+                key="otp"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.4 }}
+                className="text-center"
+              >
+                <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-6"
+                  style={{ background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.3)" }}>
+                  <ShieldCheck size={24} className="text-emerald-400" />
+                </div>
+
+                <h2 className="font-display font-bold text-2xl sm:text-3xl mb-2 text-text-primary">
+                  Enter the code
+                </h2>
+                <p className="text-sm mb-1 text-text-secondary">
+                  Sent to <span className="font-semibold text-white">{phoneE164}</span>
+                </p>
+                <p className="text-xs mb-8 text-text-muted">
+                  Check your SMS — it expires in 10 minutes.
+                </p>
+
+                {/* 6-digit OTP boxes */}
+                <div className="flex justify-center gap-2 mb-6">
+                  {otpDigits.map((digit, i) => (
+                    <input
+                      key={`otp-${i}`}
+                      ref={otpRefs[i]}
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={1}
+                      value={digit}
+                      onChange={e => handleOtpInput(i, e.target.value)}
+                      onKeyDown={e => handleOtpKeyDown(e, i)}
+                      aria-label={`OTP digit ${i + 1}`}
+                      className={`pin-input w-12 h-14 text-xl font-bold text-center rounded-xl ${digit ? "filled" : ""}`}
+                    />
+                  ))}
+                </div>
+
+                <AnimatePresence>
+                  {error && (
+                    <motion.p
+                      initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                      className="text-xs mb-4 text-error"
+                      role="alert"
+                    >
+                      {error}
+                    </motion.p>
+                  )}
+                </AnimatePresence>
+
+                {loading && (
+                  <div className="flex justify-center mb-4">
+                    <Loader2 size={20} className="animate-spin text-auron-gold" aria-hidden="true" />
+                  </div>
+                )}
+
+                {/* Resend */}
+                <div className="flex items-center justify-center gap-1 mt-2">
+                  <span className="text-xs text-text-muted">Didn&apos;t receive it?</span>
+                  <button
+                    onClick={handleResendOTP}
+                    disabled={otpResendCooldown > 0 || loading}
+                    className="text-xs font-medium transition-colors disabled:opacity-40"
+                    style={{ color: otpResendCooldown > 0 ? "var(--text-muted)" : "#C9A84C" }}
+                  >
+                    {otpResendCooldown > 0 ? `Resend in ${otpResendCooldown}s` : "Resend"}
+                  </button>
+                </div>
+
+                {/* Back to change number */}
+                <button
+                  onClick={() => { setStep("phone"); setError(""); setOtpDigits(["", "", "", "", "", ""]); }}
+                  className="mt-3 text-xs text-text-muted hover:text-text-secondary transition-colors"
+                >
+                  ← Change number
+                </button>
+
+                <progress value={90} max={100} className="w-32 h-1 mx-auto mt-8 rounded-full" aria-label="Sign-up progress" />
+                <p className="text-xs text-text-muted mt-3">Step 3 of 3</p>
               </motion.div>
             )}
 
@@ -528,7 +821,6 @@ export default function LoginPage() {
                 transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
                 className="text-center"
               >
-                {/* Success ring */}
                 <div className="relative w-20 h-20 mx-auto mb-8">
                   <motion.div
                     className="absolute inset-0 rounded-full bg-auron-gold/15 border border-auron-gold/30"
@@ -543,9 +835,7 @@ export default function LoginPage() {
                 <h2 className="font-display font-black text-3xl sm:text-4xl mb-3 text-text-primary">
                   You&apos;re in.
                 </h2>
-                <p className="text-base mb-2 text-text-secondary">
-                  You are now
-                </p>
+                <p className="text-base mb-2 text-text-secondary">You are now</p>
                 <div className="inline-block px-5 py-2 rounded-xl mb-8 bg-auron-gold/10 border border-auron-gold/30">
                   <span className="font-display font-bold text-xl gradient-text-gold">{username}</span>
                 </div>

@@ -148,7 +148,8 @@ CREATE TABLE IF NOT EXISTS users (
   id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   supabase_uid      TEXT        UNIQUE NOT NULL,  -- auth.users.id
   wallet_address    TEXT        UNIQUE,            -- Solana pubkey (set after connect)
-  phone             TEXT,                          -- E.164 format, used for KYC
+  phone             TEXT        UNIQUE,             -- E.164 format, verified via OTP
+  phone_verified_at TIMESTAMPTZ,                    -- NULL = unverified / skipped
   full_name         TEXT,
 
   -- KYC state machine: unverified → pending → approved | rejected | manual_review

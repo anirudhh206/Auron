@@ -48,9 +48,14 @@ AMOUNT RULES:
 
 RECIPIENT RULES:
 - For "upi_payment": set upi_id and merchant_name. Do NOT set recipient.
-- For all other transfers: recipient MUST be a valid Solana base58 public key (32–44 chars, no spaces)
-- If user gives only a name (e.g. "Priya"), set recipient to the name string and set confidence to 0.7, ambiguity to "What is Priya's Solana wallet address?"
-- Never invent or guess addresses
+- For all other transfers: recipient can be ANY of these — set it exactly as the user provided:
+    a) Solana wallet address (base58, 32–44 chars)  e.g. "7xKXtg2CW87d97TX..."
+    b) .sol domain                                   e.g. "priya.sol"
+    c) Indian phone number                           e.g. "9876543210" or "+919876543210"
+- If the user gives a .sol domain → set recipient to the full domain ("priya.sol"), confidence 0.95
+- If the user gives a phone number → set recipient to the number as-is, confidence 0.95
+- If the user gives only a first name with no other identifier → confidence 0.65, set ambiguity to "What is [Name]'s Solana wallet address, .sol domain, or phone number?"
+- Never invent or guess addresses, domains, or phone numbers
 
 CONFIDENCE RULES:
 - 0.95+ : all required fields present, crystal clear
@@ -63,17 +68,29 @@ LANGUAGE RULES:
 
 CONTEXT: You have conversation history. Use it. "Same person" = last recipient. "Actually make it 1000" = update last amount.
 
-EXAMPLE:
-User: "Send ₹500 to Priya"
-Correct response:
-I'll need Priya's Solana wallet address to send — that's roughly 6 USDC at today's rate.
-${SEP}{"action":"transfer_usdc","amount":null,"amount_usdc":6.01,"recipient":"Priya","note":null,"duration_days":null,"file_hash":null,"file_name":null,"description":null,"label":null,"confidence":0.7,"ambiguity":"What is Priya's Solana wallet address?"}
-
-EXAMPLE 2:
+EXAMPLE 1 — wallet address:
 User: "Send 0.5 SOL to 7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAs7"
 Correct response:
 Sending 0.5 SOL — confirming the details below.
-${SEP}{"action":"transfer_sol","amount":0.5,"amount_usdc":null,"recipient":"7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAs7","note":null,"duration_days":null,"file_hash":null,"file_name":null,"description":null,"label":null,"confidence":0.98,"ambiguity":null}`;
+${SEP}{"action":"transfer_sol","amount":0.5,"amount_usdc":null,"recipient":"7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAs7","note":null,"duration_days":null,"file_hash":null,"file_name":null,"description":null,"label":null,"confidence":0.98,"ambiguity":null}
+
+EXAMPLE 2 — .sol domain:
+User: "Send ₹500 to priya.sol"
+Correct response:
+Sending ₹500 (~6 USDC) to priya.sol — confirming below.
+${SEP}{"action":"transfer_usdc","amount":null,"amount_usdc":6.01,"recipient":"priya.sol","upi_id":null,"merchant_name":null,"inr_amount":500,"note":null,"duration_days":null,"file_hash":null,"file_name":null,"description":null,"label":null,"confidence":0.95,"ambiguity":null}
+
+EXAMPLE 3 — phone number:
+User: "Send ₹200 to 9876543210"
+Correct response:
+Sending ₹200 (~2.41 USDC) to 9876543210 — I'll look them up on Auron.
+${SEP}{"action":"transfer_usdc","amount":null,"amount_usdc":2.41,"recipient":"9876543210","upi_id":null,"merchant_name":null,"inr_amount":200,"note":null,"duration_days":null,"file_hash":null,"file_name":null,"description":null,"label":null,"confidence":0.95,"ambiguity":null}
+
+EXAMPLE 4 — name only (ask for identifier):
+User: "Send ₹500 to Priya"
+Correct response:
+I'll need Priya's Solana wallet address, .sol domain, or phone number to send — that's roughly 6 USDC.
+${SEP}{"action":"transfer_usdc","amount":null,"amount_usdc":6.01,"recipient":"Priya","note":null,"duration_days":null,"file_hash":null,"file_name":null,"description":null,"label":null,"confidence":0.65,"ambiguity":"What is Priya's Solana wallet address, .sol domain, or phone number?"}`;
 
 // ─── Route handler ─────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
@@ -330,6 +347,11 @@ function buildConfirmText(action: Record<string, unknown>): string {
     typeof n === "number" ? `${n.toFixed(2)} USDC` : String(n ?? "");
   const shortRecipient = (r: unknown) => {
     const s = String(r ?? "recipient");
+    // .sol domain — show as-is (e.g. "priya.sol")
+    if (s.endsWith(".sol")) return s;
+    // Phone number — show as-is (e.g. "9876543210")
+    if (/^\+?[\d\s\-().]{7,15}$/.test(s)) return s;
+    // Wallet address — truncate
     return s.length > 12 ? `${s.slice(0, 4)}…${s.slice(-4)}` : s;
   };
 

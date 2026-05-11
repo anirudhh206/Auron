@@ -46,10 +46,12 @@ body {
 .border-gold     { border-color: var(--auron-gold); }
 
 /* ── Scrollbar ───────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 3px; }
+::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(201,168,76,0.3); border-radius: 999px; }
+::-webkit-scrollbar-thumb { background: rgba(201,168,76,0.25); border-radius: 999px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(201,168,76,0.5); }
+/* Firefox */
+* { scrollbar-width: thin; scrollbar-color: rgba(201,168,76,0.25) transparent; }
 
 ::selection { background: rgba(201,168,76,0.35); color: #fff; }
 :focus-visible { outline: 2px solid var(--auron-gold-light); outline-offset: 2px; }
@@ -391,6 +393,41 @@ body {
   width: 20px;
   background-color: var(--auron-gold);
 }
+
+/* ── Responsive glass — reduce blur on mobile for perf ───── */
+@media (max-width: 768px) {
+  .glass        { backdrop-filter: blur(8px)  saturate(140%); -webkit-backdrop-filter: blur(8px)  saturate(140%); }
+  .glass-strong { backdrop-filter: blur(12px) saturate(160%); -webkit-backdrop-filter: blur(12px) saturate(160%); }
+  .glass-card   { backdrop-filter: blur(6px);                 -webkit-backdrop-filter: blur(6px); }
+}
+
+/* ── Touch targets — minimum 44×44px on mobile ───────────── */
+@media (max-width: 1024px) {
+  button, a[role="button"], [role="tab"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* ── Reduced motion — respect system preference ──────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .aurora-1, .aurora-2, .aurora-3,
+  .animate-float, .animate-marquee,
+  .animate-glow-pulse, .animate-btn-pulse,
+  .animate-spin-slow {
+    animation: none !important;
+  }
+}
+
+/* ── Safe area padding (iPhone notch / home bar) ─────────── */
+.pb-safe { padding-bottom: max(env(safe-area-inset-bottom), 0.5rem); }
+.pt-safe { padding-top: env(safe-area-inset-top); }
 
 /* ── Progress bar ─────────────────────────────────────────── */
 progress {

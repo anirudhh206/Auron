@@ -113,9 +113,9 @@ export default function AppPage() {
       <Aurora />
 
       {/* ═══════════════════════════════════════════════════════════════
-          DESKTOP LAYOUT  (lg and above)
+          DESKTOP / TABLET LAYOUT  (md and above — 768px+)
           ═══════════════════════════════════════════════════════════════ */}
-      <div className="hidden lg:flex flex-col h-screen overflow-hidden">
+      <div className="hidden md:flex flex-col h-screen overflow-hidden">
         {/* Desktop header */}
         <motion.header
           initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
@@ -147,28 +147,22 @@ export default function AppPage() {
               </div>
             )}
             <button onClick={() => setShowMyQR(true)}
-              className="p-2.5 rounded-xl transition-all duration-150"
-              style={{ color: "var(--text-secondary)" }}
-              onMouseEnter={e => (e.currentTarget.style.color = "#C9A84C")}
-              onMouseLeave={e => (e.currentTarget.style.color = "var(--text-secondary)")}
-              title="My QR — Receive USDC">
+              aria-label="My QR code — receive USDC"
+              className="p-2.5 rounded-xl transition-all duration-150 hover:text-[#C9A84C]"
+              style={{ color: "var(--text-secondary)" }}>
               <QrCode size={17} />
             </button>
             <button onClick={() => setShowHistory(true)}
-              className="p-2.5 rounded-xl transition-all duration-150"
-              style={{ color: "var(--text-secondary)" }}
-              onMouseEnter={e => (e.currentTarget.style.color = "var(--text-primary)")}
-              onMouseLeave={e => (e.currentTarget.style.color = "var(--text-secondary)")}
-              title="Transaction history">
+              aria-label="Transaction history"
+              className="p-2.5 rounded-xl transition-all duration-150 hover:text-white"
+              style={{ color: "var(--text-secondary)" }}>
               <History size={17} />
             </button>
             {isConnected ? <WalletWidget /> : (
               <button onClick={handleSignOut}
-                className="p-2.5 rounded-xl transition-all duration-150"
-                style={{ color: "var(--text-muted)" }}
-                onMouseEnter={e => (e.currentTarget.style.color = "var(--error)")}
-                onMouseLeave={e => (e.currentTarget.style.color = "var(--text-muted)")}
-                title="Sign out">
+                aria-label="Sign out"
+                className="p-2.5 rounded-xl transition-all duration-150 hover:text-red-400"
+                style={{ color: "var(--text-muted)" }}>
                 <LogOut size={17} />
               </button>
             )}
@@ -189,9 +183,9 @@ export default function AppPage() {
       </div>
 
       {/* ═══════════════════════════════════════════════════════════════
-          MOBILE LAYOUT  (below lg) — scan-first, bottom nav
+          MOBILE LAYOUT  (below md — under 768px) — scan-first, bottom nav
           ═══════════════════════════════════════════════════════════════ */}
-      <div className="lg:hidden flex flex-col" style={{ height: "100dvh" }}>
+      <div className="md:hidden flex flex-col" style={{ height: "100dvh" }}>
 
         {/* Mobile header — compact */}
         <motion.header
@@ -209,6 +203,7 @@ export default function AppPage() {
 
           <div className="flex items-center gap-2">
             <button onClick={() => setShowHistory(true)}
+              aria-label="Transaction history"
               className="p-2 rounded-xl" style={{ color: "var(--text-muted)" }}>
               <History size={16} />
             </button>
@@ -231,7 +226,7 @@ export default function AppPage() {
                 </button>
               </div>
             ) : (
-              <button onClick={handleSignOut} className="p-2 rounded-xl" style={{ color: "var(--text-muted)" }}>
+              <button onClick={handleSignOut} aria-label="Sign out" className="p-2 rounded-xl" style={{ color: "var(--text-muted)" }}>
                 <LogOut size={16} />
               </button>
             )}
@@ -362,7 +357,7 @@ function MobileScanHome({
           {isConnected ? (
             <>
               <div className="flex items-baseline gap-2 mt-1 mb-4">
-                <span style={{ fontSize: "32px", fontWeight: 900, color: "#F0EEE8", letterSpacing: "-0.03em", lineHeight: 1 }}>
+                <span style={{ fontSize: "clamp(24px, 8vw, 36px)", fontWeight: 900, color: "#F0EEE8", letterSpacing: "-0.03em", lineHeight: 1 }}>
                   {usdcBalance.toFixed(2)}
                 </span>
                 <span style={{ fontSize: "14px", color: "rgba(201,168,76,0.8)", fontWeight: 600 }}>USDC</span>
@@ -403,20 +398,20 @@ function MobileScanHome({
           transition={{ delay: 0.1, duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
           className="flex flex-col items-center"
         >
-          {/* Outer ring glow */}
-          <div className="relative flex items-center justify-center" style={{ padding: "16px" }}>
+          {/* Outer ring glow — responsive size */}
+          <div className="relative flex items-center justify-center p-4">
             {/* Pulse rings */}
             <motion.div
               animate={{ scale: [1, 1.4, 1], opacity: [0.25, 0, 0.25] }}
               transition={{ duration: 2.5, repeat: Infinity, ease: "easeOut" }}
               className="absolute rounded-full pointer-events-none"
-              style={{ width: "140px", height: "140px", border: "2px solid rgba(201,168,76,0.4)" }}
+              style={{ width: "min(140px, 38vw)", height: "min(140px, 38vw)", border: "2px solid rgba(201,168,76,0.4)" }}
             />
             <motion.div
               animate={{ scale: [1, 1.7, 1], opacity: [0.15, 0, 0.15] }}
               transition={{ duration: 2.5, repeat: Infinity, ease: "easeOut", delay: 0.4 }}
               className="absolute rounded-full pointer-events-none"
-              style={{ width: "140px", height: "140px", border: "1px solid rgba(201,168,76,0.3)" }}
+              style={{ width: "min(140px, 38vw)", height: "min(140px, 38vw)", border: "1px solid rgba(201,168,76,0.3)" }}
             />
 
             {/* The button itself */}
@@ -424,16 +419,17 @@ function MobileScanHome({
               onClick={onScan}
               whileTap={{ scale: 0.93 }}
               whileHover={{ scale: 1.03 }}
+              aria-label="Scan UPI QR code to pay"
               className="relative rounded-full flex flex-col items-center justify-center gap-2"
               style={{
-                width: "140px",
-                height: "140px",
+                width: "min(140px, 38vw)",
+                height: "min(140px, 38vw)",
                 background: "linear-gradient(135deg, #C9A84C, #F0D080, #C9A84C)",
                 boxShadow: "0 8px 40px rgba(201,168,76,0.45), 0 2px 8px rgba(0,0,0,0.4)",
               }}
             >
-              <QrCode size={40} style={{ color: "#080810" }} />
-              <span style={{ fontSize: "11px", fontWeight: 800, color: "#080810", letterSpacing: "0.05em", textTransform: "uppercase" }}>
+              <QrCode size={36} style={{ color: "#080810" }} />
+              <span style={{ fontSize: "10px", fontWeight: 800, color: "#080810", letterSpacing: "0.05em", textTransform: "uppercase" }}>
                 Scan to Pay
               </span>
             </motion.button>
@@ -540,12 +536,11 @@ function MobileBottomNav({
     <motion.nav
       initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
       transition={{ delay: 0.3, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-      className="relative z-20 shrink-0 grid grid-cols-2"
+      className="relative z-20 shrink-0 grid grid-cols-2 pb-safe"
       style={{
         background: "rgba(8,8,16,0.97)",
         borderTop: "1px solid rgba(201,168,76,0.1)",
         backdropFilter: "blur(24px) saturate(160%)",
-        paddingBottom: "env(safe-area-inset-bottom)",
       }}
     >
       {tabs.map(({ id, label, icon: Icon }) => {
@@ -554,6 +549,8 @@ function MobileBottomNav({
           <button
             key={id}
             onClick={() => setTab(id)}
+            aria-label={label}
+            aria-current={active ? "page" : undefined}
             className="relative flex flex-col items-center justify-center gap-1 py-3 transition-all duration-200"
           >
             {/* Active indicator */}
