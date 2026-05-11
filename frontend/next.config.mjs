@@ -1,3 +1,5 @@
+import withPWA from "next-pwa";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -61,4 +63,38 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+export default withPWA({
+  dest: "public",
+  register: true,
+  skipWaiting: true,
+  disable: process.env.NODE_ENV === "development",
+  runtimeCaching: [
+    {
+      // Cache API routes with network-first strategy
+      urlPattern: /^https:\/\/auron-mocha\.vercel\.app\/api\/.*/i,
+      handler: "NetworkFirst",
+      options: {
+        cacheName: "api-cache",
+        expiration: { maxEntries: 50, maxAgeSeconds: 60 },
+      },
+    },
+    {
+      // Cache static assets (fonts, images, JS, CSS)
+      urlPattern: /\.(?:js|css|woff2?|png|jpg|svg|ico)$/i,
+      handler: "StaleWhileRevalidate",
+      options: {
+        cacheName: "static-assets",
+        expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 30 },
+      },
+    },
+    {
+      // Cache page navigations — app shell stays fast
+      urlPattern: /^https:\/\/auron-mocha\.vercel\.app\/.*/i,
+      handler: "NetworkFirst",
+      options: {
+        cacheName: "page-cache",
+        expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 },
+      },
+    },
+  ],
+})(nextConfig);
