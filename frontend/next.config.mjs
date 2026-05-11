@@ -31,18 +31,22 @@ const nextConfig = {
           { key: "X-XSS-Protection", value: "1; mode=block" },
           {
             key: "Permissions-Policy",
-            value: "camera=(), microphone=(self), geolocation=()",
+            value: "camera=(self), microphone=(self), geolocation=()",
           },
           {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://vercel.live",
+              "script-src 'self' 'unsafe-eval' 'unsafe-inline' 'wasm-unsafe-eval' https://vercel.live",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' https://fonts.gstatic.com",
               "img-src 'self' data: blob: https:",
+              // Allow service workers (next-pwa / Workbox) and web workers
+              "worker-src 'self' blob:",
               // Solana RPC (Helius + devnet/mainnet), Jupiter API, Anthropic, Supabase
-              "connect-src 'self' https://*.helius-rpc.com https://api.mainnet-beta.solana.com https://api.devnet.solana.com wss://*.helius-rpc.com wss://api.mainnet-beta.solana.com wss://api.devnet.solana.com https://api.jup.ag https://price.jup.ag https://api.anthropic.com https://*.supabase.co wss://*.supabase.co https://auron.vercel.app",
+              "connect-src 'self' https://*.helius-rpc.com https://api.mainnet-beta.solana.com https://api.devnet.solana.com wss://*.helius-rpc.com wss://api.mainnet-beta.solana.com wss://api.devnet.solana.com https://api.jup.ag https://price.jup.ag https://api.anthropic.com https://*.supabase.co wss://*.supabase.co https://auron-mocha.vercel.app",
+              // Allow camera and microphone via media
+              "media-src 'self' blob:",
               "frame-ancestors 'none'",
             ].join("; "),
           },

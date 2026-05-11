@@ -153,11 +153,18 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
       setIsStarting(false);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
-      setCameraError(
-        msg.toLowerCase().includes("permission") || msg.toLowerCase().includes("denied")
-          ? "Camera access denied. Allow camera permission in your browser settings and try again."
-          : "Could not start camera. Make sure no other app is using it, then try again."
-      );
+      const name = err instanceof DOMException ? err.name : "";
+      let errorText: string;
+      if (name === "NotAllowedError" || msg.toLowerCase().includes("permission") || msg.toLowerCase().includes("denied")) {
+        errorText = "Camera permission denied. Tap the camera icon in your browser's address bar and allow access, then tap Try Again.";
+      } else if (name === "NotFoundError" || msg.toLowerCase().includes("not found")) {
+        errorText = "No camera found on this device.";
+      } else if (name === "NotReadableError" || msg.toLowerCase().includes("in use")) {
+        errorText = "Camera is in use by another app. Close it and try again.";
+      } else {
+        errorText = "Could not start camera. Try reloading the page or use a different browser.";
+      }
+      setCameraError(errorText);
       setIsStarting(false);
     }
   }, []);
