@@ -45,6 +45,11 @@ function PhantomCallbackInner() {
 
       const result = handleConnectResponse(phantomEncryptionPublicKey, nonce, data);
       if (!result) {
+        console.error("[phantom-callback] Decryption failed", {
+          phantomEncryptionPublicKey: phantomEncryptionPublicKey?.slice(0, 20),
+          nonce: nonce?.slice(0, 20),
+          data: data?.slice(0, 20),
+        });
         setStatus("error");
         setMessage("Could not decrypt Phantom response. Please try again.");
         setTimeout(() => router.replace("/app"), 2000);

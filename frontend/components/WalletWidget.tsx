@@ -8,10 +8,22 @@ import { Wallet, ChevronDown, Copy, ExternalLink, Check, LogOut } from "lucide-r
 import { cn } from "@/lib/utils";
 import { shortAddr, getSOLBalance, getUSDCBalance } from "@/lib/solana";
 
+/** True if running in a mobile browser (not desktop, not Phantom in-app browser) */
+function useIsMobileNonPhantom() {
+  const [isMobileNonPhantom, setIsMobileNonPhantom] = useState(false);
+  useEffect(() => {
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const isPhantomBrowser = !!(window as any).phantom?.solana;
+    setIsMobileNonPhantom(isMobile && !isPhantomBrowser);
+  }, []);
+  return isMobileNonPhantom;
+}
+
 export default function WalletWidget() {
   const { publicKey, connected, disconnect } = useWallet();
   const { setVisible } = useWalletModal();
   const address = publicKey?.toString() ?? null;
+  const isMobileNonPhantom = useIsMobileNonPhantom();
 
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -63,6 +75,29 @@ export default function WalletWidget() {
 
   // ── Not connected ────────────────────────────────────────────────
   if (!connected) {
+    // On mobile browsers (outside Phantom's in-app browser), deep-link
+    // connections fail with "Could not decrypt Phantom response".
+    // Guide the user to open the site inside Phantom's browser instead.
+    if (isMobileNonPhantom) {
+      const phantomUrl = `https://phantom.app/ul/browse/${encodeURIComponent(
+        typeof window !== "undefined" ? window.location.href : "https://auron-mocha.vercel.app"
+      )}?ref=${encodeURIComponent("https://auron-mocha.vercel.app")}`;
+
+      return (
+        <a
+          href={phantomUrl}
+          className={cn(
+            "flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold",
+            "bg-violet-600 hover:bg-violet-500 text-white",
+            "transition-all duration-150 active:scale-95"
+          )}
+        >
+          <Wallet size={15} />
+          Open in Phantom
+        </a>
+      );
+    }
+
     return (
       <button
         onClick={() => setVisible(true)}
