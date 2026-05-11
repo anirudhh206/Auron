@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { ShieldCheck, FileText, Clock, CheckCircle, XCircle, Loader2 } from "lucide-react";
@@ -23,6 +23,14 @@ const STATUS_MESSAGES: Record<string, { title: string; body: string }> = {
 };
 
 export default function KycPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#030712]" />}>
+      <KycPageInner />
+    </Suspense>
+  );
+}
+
+function KycPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const currentStatus = searchParams.get("status") ?? "unverified";
