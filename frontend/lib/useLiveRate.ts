@@ -1,11 +1,5 @@
 "use client";
 
-/**
- * useLiveRate — fetches live USDC/INR rate from /api/rate
- * Refreshes every 60 seconds automatically.
- * Falls back to ₹83.15 if the API is unreachable.
- */
-
 import { useState, useEffect, useCallback } from "react";
 
 export const FALLBACK_RATE = 83.15;
@@ -41,7 +35,7 @@ export function useLiveRate() {
           marketRate: FALLBACK_RATE,
           auronRate: FALLBACK_RATE,
           spreadPercent: "0.85%",
-          usdcPer1000Inr: parseFloat((1000 / FALLBACK_RATE).toFixed(6)),
+          usdcPer1000Inr: Number.parseFloat((1000 / FALLBACK_RATE).toFixed(6)),
           cached: false,
           fallback: true,
           fetchedAt: Date.now(),
@@ -62,7 +56,7 @@ export function useLiveRate() {
   // Convenience: convert INR to USDC using live rate
   function inrToUsdc(inr: number): number {
     const r = rate?.auronRate ?? FALLBACK_RATE;
-    return parseFloat((inr / r).toFixed(6));
+    return Number.parseFloat((inr / r).toFixed(6));
   }
 
   return {

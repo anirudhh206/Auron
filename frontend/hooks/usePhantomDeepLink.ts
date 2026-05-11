@@ -61,8 +61,8 @@ export function usePhantomDeepLink() {
   const [publicKey,   setPublicKey]   = useState<string | null>(null);
 
   // Only computed once — they don't change mid-session
-  const [isMobileDevice]     = useState(() => typeof window !== "undefined" ? isMobile()        : false);
-  const [isInPhantomBrowser] = useState(() => typeof window !== "undefined" ? isPhantomBrowser(): false);
+  const [isMobileDevice]     = useState(() => globalThis.window !== undefined ? isMobile()        : false);
+  const [isInPhantomBrowser] = useState(() => globalThis.window !== undefined ? isPhantomBrowser(): false);
 
   // ── Sync session state from localStorage ────────────────────────────────
   useEffect(() => {
@@ -74,7 +74,7 @@ export function usePhantomDeepLink() {
   // ── Connect ───────────────────────────────────────────────────────────────
   /** Redirects to Phantom to initiate a wallet connection. */
   const connect = useCallback(() => {
-    if (typeof window === "undefined") return;
+    if (globalThis.window === undefined) return;
     const cluster =
       process.env.NEXT_PUBLIC_SOLANA_NETWORK === "mainnet-beta"
         ? ("mainnet-beta" as const)
@@ -103,7 +103,7 @@ export function usePhantomDeepLink() {
       pendingAction:  PendingSignAction,
       paymentContext?: MobilePaymentContext,
     ): boolean => {
-      if (typeof window === "undefined") return false;
+      if (globalThis.window === undefined) return false;
 
       // Persist payment context so we can resume after redirect
       if (paymentContext) {
@@ -132,7 +132,7 @@ export function usePhantomDeepLink() {
     completed:      CompletedSignature;
     paymentContext: MobilePaymentContext | null;
   } | null => {
-    if (typeof window === "undefined") return null;
+    if (globalThis.window === undefined) return null;
 
     const sigRaw = localStorage.getItem(KEY_COMPLETED_SIGNATURE);
     if (!sigRaw) return null;
@@ -163,7 +163,7 @@ export function usePhantomDeepLink() {
     errorMessage: string;
     action:       string;
   } | null => {
-    if (typeof window === "undefined") return null;
+    if (globalThis.window === undefined) return null;
     const raw = localStorage.getItem(KEY_PHANTOM_ERROR);
     if (!raw) return null;
     localStorage.removeItem(KEY_PHANTOM_ERROR);

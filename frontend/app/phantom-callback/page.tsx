@@ -108,6 +108,17 @@ function PhantomCallbackInner() {
 
   const isSign = action === "sign";
 
+  const statusColors = {
+    background:
+      status === "error"   ? "rgba(239,68,68,0.15)"  :
+      status === "success" ? "rgba(16,185,129,0.15)" :
+                             "rgba(139,92,246,0.15)",
+    borderColor:
+      status === "error"   ? "rgba(239,68,68,0.3)"  :
+      status === "success" ? "rgba(16,185,129,0.3)" :
+                             "rgba(139,92,246,0.3)",
+  };
+
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-[#0A0A0F]">
       <div className="text-center px-6">
@@ -116,15 +127,8 @@ function PhantomCallbackInner() {
         <div
           className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
           style={{
-            background:
-              status === "error"   ? "rgba(239,68,68,0.15)"  :
-              status === "success" ? "rgba(16,185,129,0.15)" :
-                                     "rgba(139,92,246,0.15)",
-            border: `1px solid ${
-              status === "error"   ? "rgba(239,68,68,0.3)"  :
-              status === "success" ? "rgba(16,185,129,0.3)" :
-                                     "rgba(139,92,246,0.3)"
-            }`,
+            background: statusColors.background,
+            border: `1px solid ${statusColors.borderColor}`,
           }}
         >
           {status === "processing" && (
