@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useLiveRate } from "@/lib/useLiveRate";
 import { motion, AnimatePresence } from "framer-motion";
 import { BrowserQRCodeReader } from "@zxing/browser";
+import { BarcodeFormat, DecodeHintType } from "@zxing/library";
 import { X, Camera, RefreshCw, CheckCircle2, Zap, ArrowRight, Wallet } from "lucide-react";
 
 // ─── UPI QR ───────────────────────────────────────────────────────────────────
@@ -131,20 +132,30 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
     setScanned(null);
 
     try {
-      const reader = new BrowserQRCodeReader(undefined, {
-        delayBetweenScanAttempts: 200,
+      // Hints: only scan QR codes, try harder for small/tilted codes
+      const hints = new Map<DecodeHintType, unknown>();
+      hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE]);
+      hints.set(DecodeHintType.TRY_HARDER, true);
+
+      const reader = new BrowserQRCodeReader(hints, {
+        delayBetweenScanAttempts: 100,
       });
 
-      // Force rear camera on mobile — decodeFromVideoDevice(undefined) often
-      // picks the front camera or fails silently on Android Chrome.
+      // Force rear camera on mobile
       const controls = await reader.decodeFromConstraints(
-        { video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } } },
+        {
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
+        },
         videoRef.current,
-        (result, error) => {
+        (result, _error) => {
           if (!result) return;
           const parsed = parseQR(result.getText());
           if (parsed) {
-            controls.stop();
+            controlsRef.current?.stop();
             setScanned(parsed);
           }
         }
