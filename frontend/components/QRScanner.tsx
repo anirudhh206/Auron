@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useLiveRate } from "@/lib/useLiveRate";
 import { motion, AnimatePresence } from "framer-motion";
 import { BrowserQRCodeReader } from "@zxing/browser";
 import { X, Camera, RefreshCw, CheckCircle2, Zap, ArrowRight, Wallet } from "lucide-react";
@@ -36,7 +37,8 @@ interface QRScannerProps {
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const AURON_FX_RATE = 83.15; // ₹ per USDC — Auron spread rate
+// Fallback rate — overridden at runtime by useLiveRate hook below
+const AURON_FX_RATE_FALLBACK = 83.15;
 
 // ─── UPI QR parser ────────────────────────────────────────────────────────────
 function parseUPIQR(text: string): ParsedUPI | null {
@@ -118,6 +120,10 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(true);
 
+  // Live FX rate — keeps USDC estimate in sync with the real spread rate
+  const { auronRate } = useLiveRate();
+  const fxRate = useMemo(() => auronRate ?? AURON_FX_RATE_FALLBACK, [auronRate]);
+
   const startScanner = useCallback(async () => {
     if (!videoRef.current) return;
     setIsStarting(true);
@@ -176,7 +182,7 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
     ? `₹${upiData.am.toLocaleString("en-IN", { minimumFractionDigits: 0 })}`
     : null;
   const upiUsdcNeeded = upiData?.am
-    ? (upiData.am / AURON_FX_RATE).toFixed(4)
+    ? (upiData.am / fxRate).toFixed(4)
     : null;
 
   // ── Solana computed values ───────────────────────────────────────────────────
@@ -464,7 +470,7 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
                     <div className="flex items-center justify-between">
                       <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>FX rate</span>
                       <span className="text-[11px] font-medium" style={{ color: "var(--text-secondary)" }}>
-                        1 USDC = ₹{AURON_FX_RATE}
+                        1 USDC = ₹{fxRate.toFixed(2)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">

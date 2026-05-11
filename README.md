@@ -13,7 +13,25 @@ That's **500 million people.**
 
 The other **8 billion** were left out — not because they couldn't benefit, but because nobody built for them. They don't know what a seed phrase is. They don't want to know. They shouldn't have to.
 
-**Auron fixes this.**
+**Auron fixes this.** Starting with India — the world's largest UPI market.
+
+---
+
+## Market Opportunity
+
+We don't claim "8 billion users." We claim a real, bottom-up market that's fundable and achievable:
+
+| | Users | Notes |
+|---|---|---|
+| **India crypto users** | ~20M active (2026) | Growing 40% YoY despite tax headwinds |
+| **Of those using Solana** | ~2–3M | Phantom India installs; Backpack growth |
+| **With UPI accounts** | ~2–3M | Near-universal — UPI penetration is 85%+ among smartphone users |
+| **Serviceable Addressable Market** | **~2M users** | Our immediate target universe |
+| **Year 1 target** | **50,000 MAU** | 2.5% of SAM — conservative, achievable |
+| **Year 3 target** | **500,000 MAU** | 25% of SAM — requires brand + off-ramp moat |
+| **5-year ceiling** | Southeast Asia QR markets (Thailand, Indonesia, Philippines) | Same model, different national QR systems |
+
+The "8 billion" is the 20-year vision. The 2M is what we're building for today.
 
 ---
 
@@ -57,7 +75,7 @@ The merchant never touches crypto. The user never touches a wallet address. Auro
 |---|---|
 | Scan a merchant QR code | Pays via USDC → INR in one tap |
 | `"Send ₹500 to Priya"` | Transfers SOL or USDC on-chain in 400ms |
-| `"Lock ₹2000 for 3 months"` | Creates a time-locked savings position |
+| `"Lock ₹2000 for 3 months"` | Deposits into a Streamflow on-chain vault — nobody can touch it until the date |
 | `"Arjun owes me ₹1,500 — record it"` | Stamps an immutable agreement on Solana via memo |
 | `"Prove this photo is mine"` | SHA-256 hashes and timestamps your file on-chain |
 
@@ -254,10 +272,58 @@ Hosting         Vercel
 | **SPL Token Program** | USDC transfers (Associated Token Accounts) |
 | **Memo Program** | Immutable agreement + ownership stamps on-chain |
 | **Jupiter Aggregator** | Token swaps with platform fee |
+| **Streamflow Finance** | On-chain USDC timelocks for savings (audited, mainnet-deployed program) |
 
 All transactions are built client-side with `@solana/web3.js`, signed by the user's wallet, and submitted to Solana via Helius RPC.
 
 ---
+
+---
+
+## Competitive Moat — Why This Is Hard to Copy
+
+Google Pay could not build this in 3 weeks. Here's why:
+
+### 1. Regulatory Moat (18–24 month wall)
+Getting a licensed payment aggregator partnership in India (OnMeta/Razorpay) with proper AML/KYC coverage takes a minimum of 6 months of compliance work. Being first to establish this rail means every competitor queues behind us.
+
+### 2. Data Flywheel (compounds over time)
+Every intent parsed by Claude improves our model's accuracy for the next user. After 1 million intents, our parser understands Indian payment contexts — slang, regional phrasing, merchant name shortcuts — that a cold-start competitor can't replicate. `lib/db/schema.sql` includes `intent_log` for this exact purpose.
+
+### 3. Contact Network Effects (Metcalfe's Law)
+`lib/contacts.ts` records every payment as a contact. "Send ₹500 to Priya" works because Priya is in your history. As more contacts join Auron, the UX gap between Auron and any other wallet grows. This is the same network dynamic that made WhatsApp unassailable in India.
+
+### 4. Off-Ramp Exclusivity
+Auron negotiates a preferred-rate agreement with OnMeta in exchange for volume commitment. As transaction volume grows, rate improves. Competitors who try to build the same flow pay more per transaction than we do. See `OFFRAMP.md` for the full activation guide.
+
+### 5. Jupiter Platform Fee (On-Chain, Permanent)
+The 0.3% platform fee account is hardcoded to Auron's treasury wallet in every swap transaction. There is no contractual relationship to terminate. Revenue flows to us as long as Solana runs.
+
+---
+
+## Regulatory Compliance
+
+Auron is designed to be compliant from day one, not retrofitted.
+
+### What OnMeta Covers (Our Settlement Layer)
+- AML/KYC on all fiat settlements
+- VDA (Virtual Digital Asset) transaction reporting to Indian tax authorities
+- RBI payment framework compliance for INR settlement
+- FEMA compliance for FX conversion
+
+### What Auron Covers (Our User Layer)
+- **KYC Gate:** `lib/kyc.ts` + `/app/kyc` enforces identity verification before any UPI payment. Integrates with Sumsub (global) or DigiLocker (Government of India — highest trust tier).
+- **Spend Limits:** ₹5,000/day default (RBI-aligned), upgradeable with enhanced KYC to ₹50,000/day.
+- **AML Risk Engine:** `lib/risk.ts` scores every transaction before it hits the blockchain. 6 risk flags, velocity checks, sanctions blacklist hook (extensible to live OFAC/UN lists).
+- **Audit Trail:** Append-only `status_history` table in Supabase. Every state transition is recorded with timestamp and reason. Never updated or deleted.
+
+### Roadmap to Full Compliance
+1. **Now:** Sumsub KYC + OnMeta AML coverage + risk engine
+2. **3 months:** Apply for RBI Payment Aggregator sandbox license
+3. **6 months:** Formal PA license application (with OnMeta as regulated partner)
+4. **12 months:** Full PA authorization — enables direct banking relationships, removes OnMeta dependency
+
+See `OFFRAMP.md` for the exact steps to activate live settlement today.
 
 ---
 

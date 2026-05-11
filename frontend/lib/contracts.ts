@@ -133,10 +133,15 @@ export async function buildOwnershipStamp(
   };
 }
 
-// ─── Lock savings — memo stamp for now, Anchor program in Phase 2 ──────────
-// For the hackathon MVP, lock savings are recorded as on-chain memo commitments.
-// Phase 2: deploy a proper Solana Anchor timelock program.
-export async function buildSavingsLock(
+// ─── Lock savings — Streamflow on-chain timelock ──────────────────────────────
+// Funds go into a Streamflow program-owned PDA vault. Neither Auron nor the
+// user can access them before the cliff date — enforced at the Solana program
+// level, not in our database. Use createSavingsLock() from lib/streamflow.ts
+// in client components where a wallet adapter is available.
+//
+// This builder is kept for cases where only a preview tx is needed (e.g. fee
+// estimation) — the real lock creation goes through streamflow.ts directly.
+export async function buildSavingsLockPreview(
   fromAddress: string,
   amountUSDC: number,
   durationDays: number,
@@ -149,16 +154,18 @@ export async function buildSavingsLock(
   if (durationDays <= 0)
     throw new Error("Duration must be at least 1 day");
 
-  const unlockAt = Date.now() + durationDays * 86_400_000;
+  const unlockAt = new Date(Date.now() + durationDays * 86_400_000);
   const from = new PublicKey(fromAddress);
 
+  // Memo records intent for audit trail — actual vault is created via Streamflow
   const tx = await buildMemoTx(from, {
-    type: "lock_savings",
+    type: "lock_savings_intent",
     amount_usdc: amountUSDC,
     duration_days: durationDays,
-    unlock_at: unlockAt,
+    unlock_at: unlockAt.toISOString(),
     label,
     owner: fromAddress,
+    vault: "streamflow",             // signals real vault, not memo enforcement
     network: NETWORK,
     ts: Date.now(),
   });
@@ -166,7 +173,7 @@ export async function buildSavingsLock(
   return {
     transaction: tx,
     isVersioned: false,
-    description: `Lock ${amountUSDC} USDC for ${durationDays} days`,
+    description: `Lock ${amountUSDC} USDC for ${durationDays} days via Streamflow vault`,
   };
 }
 

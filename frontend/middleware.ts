@@ -44,6 +44,29 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // KYC gate: redirect authenticated users to /kyc if not yet verified.
+  // Devnet bypasses KYC so developers can test without going through verification.
+  // /kyc itself and all API/static routes are exempt.
+  const isDevnet = process.env.NEXT_PUBLIC_SOLANA_NETWORK === "devnet";
+  const kycExempt = path.startsWith("/kyc") || path.startsWith("/api") || path.startsWith("/_next");
+
+  if (user && !isDevnet && path.startsWith("/app") && !kycExempt) {
+    const { data: userRow } = await supabase
+      .from("users")
+      .select("kyc_status")
+      .eq("supabase_uid", user.id)
+      .single();
+
+    const kycStatus = userRow?.kyc_status ?? "unverified";
+
+    if (kycStatus !== "approved") {
+      const url = request.nextUrl.clone();
+      url.pathname = "/kyc";
+      url.searchParams.set("status", kycStatus);
+      return NextResponse.redirect(url);
+    }
+  }
+
   return supabaseResponse;
 }
 
