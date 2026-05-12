@@ -1,31 +1,16 @@
-# ── Secrets (NEVER commit these) ──────────────────────────────
-scripts/.env.deploy
-scripts/deployed_addresses.json
-frontend/.env.local
-**/.env
-**/.env.*
-!**/.env.example
-.claude/
+﻿# Rust / Anchor build artifacts
+target/
+.anchor/
 
-# ── Build artifacts ────────────────────────────────────────────
-artifacts/
-contracts/**/target/
-frontend/.next/
-frontend/node_modules/
-scripts/node_modules/
+# Node
+node_modules/
+.next/
 
-# ── OS files ───────────────────────────────────────────────────
+# Env
+.env
+.env.local
+.env.*.local
+
+# OS
 .DS_Store
 Thumbs.db
-
-# ── Logs ──────────────────────────────────────────────────────
-*.log
-npm-debug.log*
-
-# ── TypeScript ────────────────────────────────────────────────
-*.tsbuildinfo
-
-# ── Markdown (except README) ────────────────────────────────
-*.md
-!README.md
-!README*.md

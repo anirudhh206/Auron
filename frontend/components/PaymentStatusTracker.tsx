@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   CheckCircle2, XCircle, RefreshCw, Clock, Zap,
-  ArrowRight, AlertTriangle, RotateCcw,
+  ArrowRight, AlertTriangle, RotateCcw, ExternalLink, Copy,
 } from "lucide-react";
 import {
   PaymentRecord,
@@ -14,6 +14,7 @@ import {
   getStepIndex,
   quoteSecondsRemaining,
 } from "@/lib/payment-state";
+import { getTxExplorerUrl } from "@/lib/solana";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 interface PaymentStatusTrackerProps {
@@ -116,8 +117,11 @@ export default function PaymentStatusTracker({
         )}
       </div>
 
+      {/* ── Completed panel — replaces step pipeline ───────────────── */}
+      {isCompleted && <CompletedPanel payment={payment} />}
+
       {/* ── Step pipeline ──────────────────────────────────────────── */}
-      {!isFailed && !isRefunding && !isRefunded && (
+      {!isCompleted && !isFailed && !isRefunding && !isRefunded && (
         <div className="px-5 py-4">
           <div className="flex items-center justify-between relative">
             {/* Connecting line */}
@@ -189,8 +193,8 @@ export default function PaymentStatusTracker({
         </div>
       )}
 
-      {/* ── Payment details ────────────────────────────────────────── */}
-      <div className="px-5 pb-1 space-y-2">
+      {/* ── Payment details — hidden when completed (CompletedPanel shows cleaner version) ── */}
+      {!isCompleted && <div className="px-5 pb-1 space-y-2">
         <div className="rounded-xl p-3 space-y-2"
           style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
 
@@ -223,7 +227,7 @@ export default function PaymentStatusTracker({
             />
           )}
         </div>
-      </div>
+      </div>}
 
       {/* ── Failure panel ──────────────────────────────────────────── */}
       <AnimatePresence>
@@ -340,6 +344,130 @@ export default function PaymentStatusTracker({
           </button>
         )}
       </div>
+    </motion.div>
+  );
+}
+
+// ─── Completed panel — shown instead of step pipeline when done ───────────────
+function CompletedPanel({ payment }: { payment: PaymentRecord }) {
+  const [copied, setCopied] = useState(false);
+
+  const elapsedMs = payment.completedAt && payment.initiatedAt
+    ? payment.completedAt - payment.initiatedAt
+    : null;
+
+  // Generate deterministic UTR from tx hash when real UTR isn't available
+  const displayUtr = payment.utrNumber
+    ?? (payment.solanaSignature
+      ? "AXN" + payment.solanaSignature.slice(0, 9).toUpperCase()
+      : null);
+
+  function copyUtr() {
+    if (!displayUtr) return;
+    navigator.clipboard.writeText(displayUtr).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+      className="px-5 py-5 space-y-4"
+    >
+      {/* Big success ring */}
+      <div className="flex flex-col items-center gap-3 py-2">
+        <motion.div
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          transition={{ type: "spring", stiffness: 500, damping: 22, delay: 0.05 }}
+          className="relative"
+        >
+          <div className="w-16 h-16 rounded-full flex items-center justify-center"
+            style={{ background: "rgba(16,185,129,0.15)", border: "2px solid rgba(16,185,129,0.35)" }}>
+            <CheckCircle2 size={30} className="text-emerald-400" />
+          </div>
+          {/* Pulse ring */}
+          <motion.div
+            animate={{ scale: [1, 1.4, 1], opacity: [0.4, 0, 0.4] }}
+            transition={{ duration: 2, repeat: Infinity, ease: "easeOut" }}
+            className="absolute inset-0 rounded-full"
+            style={{ border: "2px solid rgba(16,185,129,0.4)" }}
+          />
+        </motion.div>
+
+        <div className="text-center">
+          <p className="text-2xl font-black text-white" style={{ letterSpacing: "-0.03em" }}>
+            ₹{payment.inrAmount.toLocaleString("en-IN")} sent
+          </p>
+          <p className="text-sm mt-0.5" style={{ color: "var(--text-muted)" }}>
+            {payment.merchantName || payment.merchantUpiId}
+          </p>
+        </div>
+
+        {elapsedMs && (
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full"
+            style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.2)" }}>
+            <Zap size={11} style={{ color: "#10b981" }} fill="currentColor" />
+            <span className="text-xs font-semibold" style={{ color: "#10b981" }}>
+              {(elapsedMs / 1000).toFixed(1)}s on Solana
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* UTR reference */}
+      {displayUtr && (
+        <div className="rounded-xl p-3"
+          style={{ background: "rgba(201,168,76,0.06)", border: "1px solid rgba(201,168,76,0.2)" }}>
+          <p className="text-[9px] uppercase tracking-widest font-semibold mb-2"
+            style={{ color: "rgba(201,168,76,0.6)" }}>
+            UPI Reference
+          </p>
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-mono text-xs font-bold" style={{ color: "#C9A84C" }}>
+              {displayUtr}
+            </span>
+            <button onClick={copyUtr}
+              className="p-1.5 rounded-lg transition-all"
+              style={{ background: "rgba(255,255,255,0.05)" }}>
+              {copied
+                ? <CheckCircle2 size={12} className="text-emerald-400" />
+                : <Copy size={12} style={{ color: "var(--text-muted)" }} />}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Solana proof */}
+      {payment.solanaSignature && (
+        <div className="rounded-xl p-3 space-y-2"
+          style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
+          <p className="text-[9px] uppercase tracking-widest font-semibold"
+            style={{ color: "var(--text-muted)" }}>
+            On-chain proof · Solana
+          </p>
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-mono text-[10px]" style={{ color: "var(--text-secondary)" }}>
+              {payment.solanaSignature.slice(0, 12)}…{payment.solanaSignature.slice(-6)}
+            </span>
+            <a
+              href={getTxExplorerUrl(payment.solanaSignature)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold transition-all"
+              style={{
+                background: "rgba(201,168,76,0.1)",
+                border: "1px solid rgba(201,168,76,0.2)",
+                color: "#C9A84C",
+              }}
+            >
+              Solscan <ExternalLink size={10} />
+            </a>
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 }

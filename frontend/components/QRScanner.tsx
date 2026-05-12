@@ -52,9 +52,16 @@ const AURON_FX_RATE_FALLBACK = 83.15;
 function parseUPIQR(text: string): ParsedUPI | null {
   try {
     if (!text.toLowerCase().startsWith("upi://")) return null;
-    const normalized = text.replace(/^upi:\/\//i, "https://upi/?");
-    const url = new URL(normalized);
-    const params = url.searchParams;
+    // Standard format: "upi://pay?pa=xxx&pn=yyy&am=zzz&cu=INR&tn=note"
+    // We extract everything after the first '?' as the query string.
+    // This correctly handles the common "upi://pay?..." shape where "pay" is
+    // a path segment — the old URL-normalization approach produced the wrong
+    // key "pay?pa" instead of "pa", causing every real UPI QR to be rejected.
+    const qIdx = text.indexOf("?");
+    // If there's no '?', treat everything after "upi://" as query params
+    // (some generators omit the path and write "upi://pa=xxx&...")
+    const queryStr = qIdx === -1 ? text.slice("upi://".length) : text.slice(qIdx + 1);
+    const params = new URLSearchParams(queryStr);
     const pa = params.get("pa")?.trim() ?? "";
     if (!pa) return null;
     const pn = params.get("pn")?.trim() || pa.split("@")[0];
@@ -145,26 +152,47 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
   const startNativeScanner = useCallback(async (video: HTMLVideoElement) => {
     const detector = new BarcodeDetector({ formats: ["qr_code"] });
 
+    // Snapshot to an offscreen canvas — far more reliable than passing the live
+    // video element directly to BarcodeDetector (avoids "no frame data" errors).
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    let detecting = false; // guard against overlapping async detect() calls
+
     const tick = async () => {
       if (scannedRef.current) return;
-      if (video.readyState >= 2) {
+
+      // readyState >= 3 (HAVE_FUTURE_DATA) guarantees real pixel data exists.
+      // videoWidth > 0 guards against a degenerate 0×0 stream on first frames.
+      if (!detecting && video.readyState >= 3 && video.videoWidth > 0 && ctx) {
+        detecting = true;
         try {
-          const codes = await detector.detect(video);
+          // Resize canvas only when video dimensions change (avoids reallocation every frame)
+          if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+          }
+          ctx.drawImage(video, 0, 0);
+          const codes = await detector.detect(canvas);
           for (const code of codes) {
-            if (scannedRef.current) return;
+            if (scannedRef.current) break;
             const parsed = parseQR(code.rawValue);
             if (parsed) {
               scannedRef.current = true;
               stopAll();
               setScanned(parsed);
+              detecting = false;
               return;
             }
           }
         } catch {
-          // Frame not ready — skip silently
+          // Frame not ready or BarcodeDetector threw — skip silently
         }
+        detecting = false;
       }
-      rafRef.current = requestAnimationFrame(tick);
+
+      if (!scannedRef.current) {
+        rafRef.current = requestAnimationFrame(tick);
+      }
     };
 
     rafRef.current = requestAnimationFrame(tick);

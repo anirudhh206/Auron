@@ -133,14 +133,12 @@ export async function buildOwnershipStamp(
   };
 }
 
-// ─── Lock savings — Streamflow on-chain timelock ──────────────────────────────
-// Funds go into a Streamflow program-owned PDA vault. Neither Auron nor the
-// user can access them before the cliff date — enforced at the Solana program
-// level, not in our database. Use createSavingsLock() from lib/streamflow.ts
-// in client components where a wallet adapter is available.
+// ─── Lock savings — Auron on-chain savings vault (Anchor program) ────────────
+// Funds go into a PDA vault owned by the Auron savings-vault program.
+// Neither Auron nor anyone else can access them before the unlock timestamp —
+// enforced at the Solana program level, not in a database.
 //
-// This builder is kept for cases where only a preview tx is needed (e.g. fee
-// estimation) — the real lock creation goes through streamflow.ts directly.
+// Program: SAVzVZMiYXHGXgCnLQb9vHEQWipbSxAJCeXHCEo5auN (devnet)
 export async function buildSavingsLockPreview(
   fromAddress: string,
   amountUSDC: number,
@@ -154,26 +152,27 @@ export async function buildSavingsLockPreview(
   if (durationDays <= 0)
     throw new Error("Duration must be at least 1 day");
 
-  const unlockAt = new Date(Date.now() + durationDays * 86_400_000);
-  const from = new PublicKey(fromAddress);
+  const { buildLockSavingsTx } = await import("./savings-vault");
+  const { getConnection: getRpcConnection } = await import("./solana");
 
-  // Memo records intent for audit trail — actual vault is created via Streamflow
-  const tx = await buildMemoTx(from, {
-    type: "lock_savings_intent",
-    amount_usdc: amountUSDC,
-    duration_days: durationDays,
-    unlock_at: unlockAt.toISOString(),
-    label,
-    owner: fromAddress,
-    vault: "streamflow",             // signals real vault, not memo enforcement
-    network: NETWORK,
-    ts: Date.now(),
+  const connection = getRpcConnection();
+  const owner      = new PublicKey(fromAddress);
+
+  const tx = await buildLockSavingsTx(connection, {
+    owner,
+    amountUsdc: amountUSDC,
+    durationDays,
+    label: label.slice(0, 64),
+  });
+
+  const unlockAt = new Date(Date.now() + durationDays * 86_400_000).toLocaleDateString("en-IN", {
+    day: "numeric", month: "short", year: "numeric",
   });
 
   return {
     transaction: tx,
     isVersioned: false,
-    description: `Lock ${amountUSDC} USDC for ${durationDays} days via Streamflow vault`,
+    description: `Lock ${amountUSDC} USDC for ${durationDays} days — unlocks ${unlockAt} · Auron vault on Solana`,
   };
 }
 
