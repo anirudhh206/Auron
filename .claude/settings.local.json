@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(pandoc --track-changes=all \"C:\\\\Users\\\\Asus\\\\Downloads\\\\Chainless_Production_Overview.docx\" -o \"C:\\\\Users\\\\Asus\\\\Downloads\\\\chainless_overview.md\")",
-      "Read(//c/Users/Asus/Downloads/**)",
-      "Bash(npm install *)"
-    ]
-  }
-}
