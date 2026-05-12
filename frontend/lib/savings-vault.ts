@@ -1,7 +1,7 @@
 /**
  * Auron Savings Vault — Anchor program client
  *
- * Program: 6d73yQjrJXB96WTzBu2B3z4n5Gh42a51Am3nYAdHLrNv (devnet)
+ * Program: B5DwqnCoDrY8ezfGaZfpAnvZ4FwCtPNHk6vT5nRgFENg (devnet)
  * Two instructions:
  *   - lockSavings(amount, unlockTimestamp, label)
  *   - unlockSavings()
@@ -28,7 +28,7 @@ import {
 // ─── Program constants ────────────────────────────────────────────────────────
 
 export const SAVINGS_VAULT_PROGRAM_ID = new PublicKey(
-  "6d73yQjrJXB96WTzBu2B3z4n5Gh42a51Am3nYAdHLrNv"
+  "B5DwqnCoDrY8ezfGaZfpAnvZ4FwCtPNHk6vT5nRgFENg"
 );
 
 // devnet USDC

@@ -52,7 +52,7 @@ User: "Scan Swiggy QR"
 ### Savings Vault (`programs/savings-vault/`)
 Custom Anchor program. USDC is locked in a PDA — program-enforced, not database-enforced.
 
-- **Program ID:** `6d73yQjrJXB96WTzBu2B3z4n5Gh42a51Am3nYAdHLrNv` (devnet)
+- **Program ID:** `B5DwqnCoDrY8ezfGaZfpAnvZ4FwCtPNHk6vT5nRgFENg` (devnet)
 - **Instructions:** `lock_savings(amount, unlock_timestamp, label)` · `unlock_savings()`
 - **PDA:** `[b"vault", owner_pubkey]` per user
 - **Events:** `SavingsLocked` · `SavingsUnlocked` — indexable on-chain
@@ -63,7 +63,7 @@ pub fn lock_savings(ctx, amount: u64, unlock_timestamp: i64, label: String) -> R
 pub fn unlock_savings(ctx) -> Result<()>
 ```
 
-[View on Solscan (devnet)](https://solscan.io/account/6d73yQjrJXB96WTzBu2B3z4n5Gh42a51Am3nYAdHLrNv?cluster=devnet)
+[View on Solscan (devnet)](https://solscan.io/account/B5DwqnCoDrY8ezfGaZfpAnvZ4FwCtPNHk6vT5nRgFENg?cluster=devnet)
 
 ### Agreement Stamps + Ownership Proofs
 Uses the Solana Memo program. Immutable, timestamped by the chain, verifiable by anyone.

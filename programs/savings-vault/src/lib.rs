@@ -4,7 +4,7 @@ use anchor_spl::{
     token::{self, Mint, Token, TokenAccount, Transfer},
 };
 
-declare_id!("6d73yQjrJXB96WTzBu2B3z4n5Gh42a51Am3nYAdHLrNv");
+declare_id!("B5DwqnCoDrY8ezfGaZfpAnvZ4FwCtPNHk6vT5nRgFENg");
 
 #[program]
 pub mod savings_vault {
