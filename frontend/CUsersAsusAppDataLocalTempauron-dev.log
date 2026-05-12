@@ -1,0 +1,118 @@
+   ▲ Next.js 15.5.15
+   - Local:        http://localhost:3001
+   - Network:      http://192.168.1.7:3001
+   - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 27.3s
+ ○ Compiling /middleware ...
+ ✓ Compiled /middleware in 14.5s (209 modules)
+<w> [webpack.cache.PackFileCacheStrategy] Serializing big strings (216kiB) impacts deserialization performance (consider using Buffer instead and decode when needed)
+ ○ Compiling /api/rate ...
+ ✓ Compiled /api/rate in 16.2s (341 modules)
+[rate] fetched USDC/INR=94.41
+ GET /api/rate 200 in 19918ms
+[rate] fetched USDC/INR=94.41
+ GET /api/rate 200 in 3372ms
+ ○ Compiling /api/v1/payment/[id] ...
+ ✓ Compiled /api/v1/payment/[id] in 80.2s (384 modules)
+ GET /api/v1/payment/nonexistent_id_12345 404 in 98729ms
+ ○ Compiling /api/v1/pay ...
+ ✓ Compiled /api/v1/pay in 22.6s (505 modules)
+ POST /api/v1/pay 400 in 24162ms
+ POST /api/v1/pay 400 in 52ms
+[v1/pay] START paymentId=demo_pay_1778404026188 merchant=swiggy@icici inr=₹500 usdc=6.012 provider=razorpay
+[v1/pay] DEMO mode — skipping TX verification
+[v1/pay] DEMO SUCCESS paymentId=demo_pay_1778404026188 utr=DEMO_UTR1778404173764
+ POST /api/v1/pay 200 in 1805ms
+ GET /api/v1/payment/demo_pay_1778404026188 200 in 407ms
+[v1/pay] START paymentId=demo_pay_1778404026188 merchant=swiggy@icici inr=₹500 usdc=6.012 provider=razorpay
+[v1/pay] IDEMPOTENT HIT (completed) paymentId=demo_pay_1778404026188
+ POST /api/v1/pay 200 in 96ms
+ POST /api/v1/pay 422 in 60ms
+ ○ Compiling /api/workers/settlement ...
+ ✓ Compiled /api/workers/settlement in 705ms (507 modules)
+ POST /api/workers/settlement 405 in 1047ms
+ ○ Compiling /api/workers/reconcile ...
+ ✓ Compiled /api/workers/reconcile in 847ms (509 modules)
+ POST /api/workers/reconcile 405 in 1087ms
+ ○ Compiling /api/rate ...
+ ✓ Compiled /api/rate in 4.2s (316 modules)
+[rate] fetched USDC/INR=94.41
+ GET /api/rate 200 in 8107ms
+[worker/settlement] Starting batch
+[worker/settlement] Found 0 pending settlement(s)
+[worker/settlement] Done: processed=0 succeeded=0 failed=0 skipped=0 durationMs=261
+ GET /api/workers/settlement 200 in 448ms
+[worker/settlement] Starting batch
+[worker/settlement] Found 0 pending settlement(s)
+[worker/settlement] Done: processed=0 succeeded=0 failed=0 skipped=0 durationMs=62
+ GET /api/workers/settlement 200 in 163ms
+[rate] fetched USDC/INR=94.41
+ GET /api/rate 200 in 2203ms
+ GET /api/v1/payment/nonexistent_xyz_999 404 in 2137ms
+ POST /api/v1/pay 400 in 1142ms
+ POST /api/v1/pay 400 in 115ms
+ POST /api/v1/pay 422 in 140ms
+[v1/pay] START paymentId=demo_pay2_1778404284156 merchant=swiggy@icici inr=₹500 usdc=5.342 provider=razorpay
+[v1/pay] DEMO mode — skipping TX verification
+[v1/pay] DEMO SUCCESS paymentId=demo_pay2_1778404284156 utr=DEMO_UTR1778404294371
+ POST /api/v1/pay 200 in 2277ms
+ GET /api/v1/payment/demo_pay2_1778404284156 200 in 477ms
+[v1/pay] START paymentId=demo_pay2_1778404284156 merchant=swiggy@icici inr=₹500 usdc=5.342 provider=razorpay
+[v1/pay] IDEMPOTENT HIT (completed) paymentId=demo_pay2_1778404284156
+ POST /api/v1/pay 200 in 271ms
+[worker/settlement] Starting batch
+[worker/settlement] Found 0 pending settlement(s)
+[worker/settlement] Done: processed=0 succeeded=0 failed=0 skipped=0 durationMs=53
+ GET /api/workers/settlement 200 in 481ms
+[worker/reconcile] Starting reconciliation
+[worker/reconcile] Checking 2 settlement(s)
+[worker/reconcile] Failed to fetch payout demo_payout_demo_pay_1778404026188: Not Found
+[worker/reconcile] Failed to fetch payout demo_payout_demo_pay2_1778404284156: Not Found
+[worker/reconcile] Done: checked=2 correct=0 fixed=0 errors=2 durationMs=543
+ GET /api/workers/reconcile 200 in 1201ms
+ ✓ Compiled in 100ms
+   Reload env: .env.local
+ ✓ Compiled in 1976ms (404 modules)
+ ○ Compiling /api/rate ...
+ ✓ Compiled /api/rate in 1022ms (146 modules)
+[rate] fetched USDC/INR=94.42
+ GET /api/rate 200 in 1661ms
+ ✓ Compiled /api/v1/payment/[id] in 471ms (189 modules)
+ GET /api/v1/payment/totally_unknown_xyz 404 in 2149ms
+ ○ Compiling /api/v1/pay ...
+ ✓ Compiled /api/v1/pay in 4.1s (312 modules)
+[v1/pay] START paymentId=pay_1778405423382 merchant=zomato@upi inr=₹349 usdc=3.726 provider=razorpay
+[v1/pay] Test stub signature — skipping on-chain verification
+[razorpay] PAYOUT attempt=1 referenceId=ik_1778405423382 amount=₹349 upi=zomato@upi
+[razorpay] STEP 1/3 Creating contact name="Zomato" referenceId=ik_1778405423382
+[razorpay] STEP 1 OK contactId=cont_Snc27nnHKKDyDP
+[razorpay] STEP 2/3 Creating fund account upi=zomato@upi contactId=cont_Snc27nnHKKDyDP
+[razorpay] STEP 2 OK fundAccountId=fa_Snc28RkXnewdHl
+[razorpay] STEP 3/3 Initiating payout amount=₹349 fundAccountId=fa_Snc28RkXnewdHl
+[razorpay] No RAZORPAY_ACCOUNT_ID — dispatch simulated contactReal=true fundAccountReal=true payoutId=pout_2uGjcw4c7V8uLJ utr=YESB177840543180936821
+[razorpay] SUCCESS referenceId=ik_1778405423382 payoutId=pout_2uGjcw4c7V8uLJ utr=YESB177840543180936821
+[v1/pay] SUCCESS paymentId=pay_1778405423382 payoutId=pout_2uGjcw4c7V8uLJ utr=YESB177840543180936821 durationMs=2189
+ POST /api/v1/pay 200 in 8500ms
+[v1/pay] START paymentId=pay_real_1778405431975 merchant=test@upi inr=₹100 usdc=1.067 provider=razorpay
+[v1/pay] Verifying tx on-chain: 5xK9mR3pL2wQ…
+[verify-tx] RPC error: failed to get transaction: Invalid param: Invalid
+[v1/pay] TX VERIFICATION FAILED reason="Solana RPC error: failed to get transaction: Invalid param: Invalid"
+ POST /api/v1/pay 422 in 2101ms
+ GET /api/v1/payment/pay_1778405423382 200 in 349ms
+[v1/pay] START paymentId=pay_1778405423382 merchant=zomato@upi inr=₹349 usdc=3.726 provider=razorpay
+[v1/pay] IDEMPOTENT HIT (completed) paymentId=pay_1778405423382
+ POST /api/v1/pay 200 in 263ms
+ ○ Compiling /api/workers/settlement ...
+ ✓ Compiled /api/workers/settlement in 1795ms (314 modules)
+[worker/settlement] Starting batch
+[worker/settlement] Found 0 pending settlement(s)
+[worker/settlement] Done: processed=0 succeeded=0 failed=0 skipped=0 durationMs=59
+ GET /api/workers/settlement 200 in 2748ms
+ ○ Compiling /api/workers/reconcile ...
+ ✓ Compiled /api/workers/reconcile in 1790ms (316 modules)
+[worker/reconcile] Starting reconciliation
+[worker/reconcile] Checking 0 settlement(s)
+[worker/reconcile] Done: checked=0 correct=0 fixed=0 errors=0 durationMs=66
+ GET /api/workers/reconcile 200 in 2663ms
