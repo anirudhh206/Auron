@@ -3,10 +3,14 @@
  *
  * Pipeline (in order):
  *   1. Validate request body
- *   2. Idempotency check (return cached result for duplicate keys)
- *   3. Verify Solana transaction on-chain (signature, USDC mint, amount, recipient)
- *   4. Execute payout via provider (OnMeta / demo)
- *   5. Cache + return result
+ *   2. Idempotency check via ledger DB (replace duplicate requests)
+ *   3. Create ledger record (status: initiated)
+ *   4. Verify Solana transaction on-chain
+ *   5. Transition ledger → verified
+ *   6. Create settlement record + transition → settling
+ *   7. Execute payout via provider (OnMeta / demo)
+ *   8. Transition ledger → completed | failed
+ *   9. Return result
  *
  * Environment flags:
  *   DEMO_SETTLEMENT=true   — skip real payout, return simulated result
@@ -17,6 +21,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { withRetry, isNonRetryableOfframpError } from "@/lib/retry";
 import { verifyUsdcTransfer } from "@/lib/verify-tx";
+import {
+  createTransaction,
+  transitionTransaction,
+  createSettlement,
+  updateSettlement,
+  getTransactionByIdempotencyKey,
+} from "@/lib/db/ledger";
 import type { OnMetaPayoutRequest, OnMetaPayoutResult } from "@/lib/onmeta";
 
 export const runtime = "nodejs";
@@ -25,21 +36,10 @@ export const runtime = "nodejs";
 
 const MAX_INR_PER_TX  = 200_000;   // ₹2 lakh per transaction
 const MAX_USDC_PER_TX = 2_500;
-const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000; // 24h
 
 const TREASURY_ADDRESS =
   process.env.NEXT_PUBLIC_FEE_WALLET ??
   "G2FAbFQPFa5qKXCetoFZQEvF9TdM4yE6UwqroeN9BCWQ";
-
-// ── Idempotency cache ─────────────────────────────────────────────────────────
-
-interface CachedResult extends OnMetaPayoutResult {
-  verifiedTx:  boolean;
-  demoMode:    boolean;
-  provider:    string;
-  paymentId:   string;
-}
-const idempotencyCache = new Map<string, { result: CachedResult; cachedAt: number }>();
 
 // ── Request type ──────────────────────────────────────────────────────────────
 
@@ -86,7 +86,7 @@ function validate(body: unknown): { ok: true; data: ValidatedRequest } | { ok: f
 async function callOnMeta(req: ValidatedRequest, attempt: number, demoMode: boolean): Promise<OnMetaPayoutResult> {
   if (demoMode) {
     console.log(`[OnMeta DEMO] attempt=${attempt} paymentId=${req.paymentId}`);
-    await new Promise((r) => setTimeout(r, 600 + Math.random() * 400)); // realistic delay
+    await new Promise((r) => setTimeout(r, 600 + Math.random() * 400));
     return {
       success:           true,
       payoutId:          `demo_payout_${req.paymentId}`,
@@ -96,7 +96,6 @@ async function callOnMeta(req: ValidatedRequest, attempt: number, demoMode: bool
     };
   }
 
-  // Production
   const onmetaKey = process.env.ONMETA_API_KEY!;
   const res = await fetch("https://api.onmeta.in/v1/offramp/initiate", {
     method:  "POST",
@@ -150,14 +149,42 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   console.log(`[offramp] START paymentId=${data.paymentId} merchant=${data.merchantUpiId} inr=₹${data.inrAmount} usdc=${data.usdcAmount} demo=${demoMode}`);
 
-  // ── 1. Idempotency check ────────────────────────────────────────────────────
-  const cached = idempotencyCache.get(data.idempotencyKey);
-  if (cached && Date.now() - cached.cachedAt < IDEMPOTENCY_TTL_MS) {
-    console.log(`[offramp] CACHE HIT paymentId=${data.paymentId}`);
-    return NextResponse.json({ ...cached.result, fromCache: true });
+  // ── 1. Idempotency check via ledger ─────────────────────────────────────────
+  const existing = await getTransactionByIdempotencyKey(data.idempotencyKey);
+  if (existing.ok) {
+    const txn = existing.data;
+    console.log(`[offramp] IDEMPOTENT HIT paymentId=${data.paymentId} existingStatus=${txn.status}`);
+    return NextResponse.json({
+      fromCache:    true,
+      paymentId:    txn.payment_id,
+      status:       txn.status,
+      provider:     txn.provider ?? "onmeta",
+      demoMode,
+      verifiedTx:   txn.status !== "initiated" && txn.status !== "failed",
+    });
   }
 
-  // ── 2. Verify Solana transaction ────────────────────────────────────────────
+  // ── 2. Create ledger record (initiated) ─────────────────────────────────────
+  const createResult = await createTransaction({
+    payment_id:      data.paymentId,
+    idempotency_key: data.idempotencyKey,
+    user_id:         data.userId,
+    merchant_upi_id: data.merchantUpiId,
+    merchant_name:   data.merchantName,
+    inr_amount:      data.inrAmount,
+    usdc_amount:     data.usdcAmount,
+    status:          "initiated",
+    provider:        demoMode ? "demo" : "onmeta",
+  });
+
+  if (!createResult.ok) {
+    // Another request created it concurrently — treat as idempotent
+    console.warn(`[offramp] createTransaction failed (likely race): ${createResult.error}`);
+  }
+
+  const transactionId = createResult.ok ? createResult.data.id : null;
+
+  // ── 3. Verify Solana transaction ─────────────────────────────────────────────
   let verifiedTx = false;
   let verifyReason: string | undefined;
   let blockTime: number | undefined;
@@ -170,12 +197,20 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       expectedUsdcAmount:  data.usdcAmount,
     });
 
-    verifiedTx    = verification.verified;
-    verifyReason  = verification.failureReason;
-    blockTime     = verification.blockTime;
+    verifiedTx   = verification.verified;
+    verifyReason = verification.failureReason;
+    blockTime    = verification.blockTime;
 
     if (!verification.verified && !verification.demoMode) {
-      // Hard block — do NOT settle
+      // Hard block — record failure in ledger and return
+      if (transactionId) {
+        await transitionTransaction(transactionId, "failed", {
+          reason:          "tx_verification_failed",
+          errorMessage:    verifyReason,
+          failureCategory: "tx_simulation_failed",
+          txSignature:     data.txSignature,
+        });
+      }
       console.error(`[offramp] TX VERIFICATION FAILED paymentId=${data.paymentId} reason="${verifyReason}"`);
       return NextResponse.json(
         {
@@ -190,12 +225,38 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
+    // Transition to verified
+    if (transactionId && verification.verified) {
+      await transitionTransaction(transactionId, "verified", {
+        reason:      "on_chain_transfer_confirmed",
+        txSignature: data.txSignature,
+        txBlockTime: blockTime ? new Date(blockTime) : undefined,
+      });
+    }
+
     if (!verification.verified && verification.demoMode) {
       console.log(`[offramp] TX not verified but DEMO_SETTLEMENT=true — proceeding with simulated payout`);
     }
   }
 
-  // ── 3. Execute settlement ───────────────────────────────────────────────────
+  // ── 4. Transition to settling + create settlement record ─────────────────────
+  if (transactionId) {
+    await transitionTransaction(transactionId, "settling", {
+      reason: "initiating_offramp_payout",
+    });
+  }
+
+  const settlementResult = transactionId
+    ? await createSettlement({
+        transaction_id: transactionId,
+        provider:       demoMode ? "demo" : "onmeta",
+        status:         "pending",
+      })
+    : null;
+
+  const settlementId = settlementResult?.ok ? settlementResult.data.id : null;
+
+  // ── 5. Execute settlement ────────────────────────────────────────────────────
   let result: OnMetaPayoutResult;
   let retryCount = 0;
 
@@ -206,11 +267,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         return callOnMeta(data, attempt, demoMode);
       },
       {
-        maxAttempts:  3,
+        maxAttempts:    3,
         initialDelayMs: 1_500,
-        maxDelayMs:   15_000,
-        backoffFactor: 2,
-        shouldRetry:  (err) => !isNonRetryableOfframpError(err),
+        maxDelayMs:     15_000,
+        backoffFactor:  2,
+        shouldRetry:    (err) => !isNonRetryableOfframpError(err),
         onRetry: (err, attempt, delayMs) => {
           console.warn(`[offramp] RETRY attempt=${attempt} paymentId=${data.paymentId} err="${err.message}" delay=${delayMs}ms`);
         },
@@ -219,35 +280,56 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   } catch (err: unknown) {
     const message    = err instanceof Error ? err.message : "Payout failed";
     const durationMs = Date.now() - start;
+    const category   = classifyFailure(message);
+
+    // Mark ledger as failed
+    if (transactionId) {
+      await transitionTransaction(transactionId, "failed", {
+        reason:          "offramp_payout_failed",
+        errorMessage:    message,
+        failureCategory: category,
+      });
+    }
+    if (settlementId) {
+      await updateSettlement(settlementId, {
+        status:       "failed",
+        raw_response: { error: message, retryCount },
+      });
+    }
+
     console.error(`[offramp] FAILED paymentId=${data.paymentId} retries=${retryCount} err="${message}"`);
 
     return NextResponse.json(
       {
         error:           message,
-        failureCategory: classifyFailure(message),
+        failureCategory: category,
         paymentId:       data.paymentId,
         retryCount,
         durationMs,
         verifiedTx,
         demoMode,
-        retryable:       !isNonRetryableOfframpError(err instanceof Error ? err : new Error(message)),
+        retryable: !isNonRetryableOfframpError(err instanceof Error ? err : new Error(message)),
       },
       { status: 502 }
     );
   }
 
+  // ── 6. Mark completed in ledger ──────────────────────────────────────────────
+  if (transactionId) {
+    await transitionTransaction(transactionId, "completed", {
+      reason: `payout_${result.status ?? "completed"}`,
+    });
+  }
+  if (settlementId) {
+    await updateSettlement(settlementId, {
+      status:             result.status === "completed" ? "completed" : "processing",
+      provider_payout_id: result.payoutId,
+      utr:                result.utrNumber,
+      raw_response:       result as unknown as Record<string, unknown>,
+    });
+  }
+
   const durationMs = Date.now() - start;
-
-  // ── 4. Cache + respond ──────────────────────────────────────────────────────
-  const responsePayload: CachedResult = {
-    ...result,
-    verifiedTx,
-    demoMode,
-    provider:  "onmeta",
-    paymentId: data.paymentId,
-  };
-
-  idempotencyCache.set(data.idempotencyKey, { result: responsePayload, cachedAt: Date.now() });
 
   console.log(
     `[offramp] SUCCESS paymentId=${data.paymentId} payoutId=${result.payoutId} ` +
@@ -255,7 +337,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     `retries=${retryCount} durationMs=${durationMs}`
   );
 
-  return NextResponse.json({ ...responsePayload, retryCount, durationMs, blockTime });
+  return NextResponse.json({
+    ...result,
+    verifiedTx,
+    demoMode,
+    provider:   demoMode ? "demo" : "onmeta",
+    paymentId:  data.paymentId,
+    retryCount,
+    durationMs,
+    blockTime,
+  });
 }
 
 // ── Failure classifier ────────────────────────────────────────────────────────
