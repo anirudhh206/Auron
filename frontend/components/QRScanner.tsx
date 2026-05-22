@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useLiveRate } from "@/lib/useLiveRate";
 import { motion, AnimatePresence } from "framer-motion";
 import { BrowserQRCodeReader } from "@zxing/browser";
@@ -43,10 +43,6 @@ interface QRScannerProps {
   onScan: (result: ParsedQRResult) => void;
   onClose: () => void;
 }
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-// Fallback rate — overridden at runtime by useLiveRate hook below
-const AURON_FX_RATE_FALLBACK = 83.15;
 
 // ─── UPI QR parser ────────────────────────────────────────────────────────────
 function parseUPIQR(text: string): ParsedUPI | null {
@@ -139,7 +135,7 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
   const [isStarting, setIsStarting] = useState(true);
 
   const { auronRate } = useLiveRate();
-  const fxRate = useMemo(() => auronRate ?? AURON_FX_RATE_FALLBACK, [auronRate]);
+  const fxRate = auronRate;
 
   // ── Stop everything ────────────────────────────────────────────────────────
   const stopAll = useCallback(() => {

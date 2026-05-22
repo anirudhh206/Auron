@@ -10,40 +10,11 @@
  *   OnMeta converts USDC → INR and pays via UPI
  *   Merchant receives INR in their existing UPI account
  *
- * Auron earns: charges user ₹83.15/USDC, market rate ~₹84, keeps the spread.
+ * FX rates come from /api/rate (CoinGecko, 60s cache) — never hardcoded here.
+ * Quote authority lives in lib/quote.ts + /api/quote.
  */
 
-export const AURON_FX_RATE = 83.15; // INR per USDC — Auron's rate (below market = Auron earns spread)
-export const MARKET_FX_RATE = 84.00; // approximate market rate
-
-// Calculate how much USDC user needs to pay a given INR amount
-export function inrToUsdc(inrAmount: number): number {
-  return parseFloat((inrAmount / AURON_FX_RATE).toFixed(6));
-}
-
-// Calculate INR equivalent of USDC amount at Auron rate
-export function usdcToInr(usdcAmount: number): number {
-  return parseFloat((usdcAmount * AURON_FX_RATE).toFixed(2));
-}
-
-// Auron revenue per transaction (FX spread)
-export function auronRevenue(inrAmount: number): number {
-  const usdcCharged = inrToUsdc(inrAmount);
-  const usdcAtMarket = inrAmount / MARKET_FX_RATE;
-  return parseFloat(((usdcCharged - usdcAtMarket) * AURON_FX_RATE).toFixed(2));
-}
-
 // ─── OnMeta API types ─────────────────────────────────────────────────────────
-
-export interface OnMetaQuote {
-  inrAmount: number;
-  usdcAmount: number;
-  fxRate: number;
-  onmetaFee: number; // OnMeta's ~0.5% fee
-  auronFee: number;  // Auron's spread
-  merchantGets: number; // final INR merchant receives
-  estimatedTime: string;
-}
 
 export interface OnMetaPayoutRequest {
   usdcAmount: number;
@@ -60,24 +31,6 @@ export interface OnMetaPayoutResult {
   status: "pending" | "processing" | "completed" | "failed";
   utrNumber?: string; // UPI transaction reference
   estimatedDelivery: string;
-}
-
-// ─── Quote (no API call needed — computed locally) ───────────────────────────
-
-export function getQuote(inrAmount: number): OnMetaQuote {
-  const usdcAmount = inrToUsdc(inrAmount);
-  const onmetaFee = parseFloat((usdcAmount * 0.005 * AURON_FX_RATE).toFixed(2)); // 0.5%
-  const spread = auronRevenue(inrAmount);
-
-  return {
-    inrAmount,
-    usdcAmount,
-    fxRate: AURON_FX_RATE,
-    onmetaFee,
-    auronFee: spread,
-    merchantGets: inrAmount - onmetaFee,
-    estimatedTime: "10–30 seconds",
-  };
 }
 
 // ─── Payout (server-side only — calls OnMeta API) ────────────────────────────
