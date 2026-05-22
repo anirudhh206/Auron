@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/workers/settlement",
-      "schedule": "* * * * *"
+      "schedule": "0 * * * *"
     },
     {
       "path": "/api/workers/reconcile",
