@@ -1,23 +1,16 @@
 /**
- * GET /api/workers/reconcile — Daily Reconciliation Worker
+ * GET /api/workers/reconcile — Reconciliation Worker
  *
  * Called by Vercel Cron daily at 02:00 UTC.
- * Compares Auron's ledger against Razorpay's ground truth.
+ * Catches settlements that the main worker started but never finished recording —
+ * e.g. worker called OnMeta successfully but crashed before updating the ledger.
  *
- * Why this matters:
- *   Without reconciliation, one Razorpay API bug = lost money.
- *   This is what separates financial infrastructure from CRUD apps.
- *
- * What it does:
- *   1. Fetch all settlements that haven't been checked in the last 24h
- *   2. For each: call GET /v1/payouts/:id on Razorpay
- *   3. Compare Razorpay status to our local status
- *   4. Fix mismatches and log discrepancies
- *
- * Mismatch cases:
- *   - Auron says "pending", Razorpay says "processed" → mark completed, add UTR
- *   - Auron says "completed", Razorpay says "failed" → flag for manual review
- *   - Auron says "processing", Razorpay says unknown → re-query, increment retry
+ * Strategy:
+ *   - Demo settlements: resolve from stored raw_response (no external call needed)
+ *   - OnMeta settlements: check provider_payout_id against OnMeta status endpoint
+ *   - Stuck "processing" settlements (>10 min): reset to pending for re-attempt
+ *   - Completed-but-unrecorded: fix ledger to match provider ground truth
+ *   - Critical mismatch (auron=completed, provider=failed): flag for manual review
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -25,8 +18,8 @@ import {
   getSettlementsForReconciliation,
   updateSettlement,
   transitionTransaction,
+  getTransactionById,
 } from "@/lib/db/ledger";
-import crypto from "crypto";
 
 export const runtime     = "nodejs";
 export const maxDuration = 60;
@@ -36,65 +29,45 @@ export const maxDuration = 60;
 function isAuthorized(req: NextRequest): boolean {
   const secret = process.env.CRON_SECRET;
   if (!secret) return true;
-  const authHeader = req.headers.get("authorization");
-  return authHeader === `Bearer ${secret}`;
+  const auth = req.headers.get("authorization");
+  return auth === `Bearer ${secret}`;
 }
 
-// ── Razorpay payout status check ──────────────────────────────────────────────
+// ── OnMeta status check ───────────────────────────────────────────────────────
 
-interface RazorpayPayoutStatus {
-  id:          string;
-  status:      "queued" | "pending" | "rejected" | "processing" | "processed" | "cancelled" | "failed" | "reversed";
-  utr?:        string;
-  failure_reason?: string;
-  created_at:  number;
-}
+type NormalisedStatus = "completed" | "processing" | "failed";
 
-async function fetchRazorpayPayoutStatus(
+async function checkOnMetaStatus(
   payoutId: string
-): Promise<{ ok: true; data: RazorpayPayoutStatus } | { ok: false; error: string }> {
-  const keyId    = process.env.RAZORPAY_KEY_ID;
-  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+): Promise<{ ok: true; status: NormalisedStatus; utr?: string } | { ok: false; error: string }> {
+  const apiKey = process.env.ONMETA_API_KEY;
 
-  if (!keyId || !keySecret) {
-    return { ok: false, error: "Razorpay credentials not configured" };
+  // Demo mode — no external check possible; treat processing as still in-flight
+  if (!apiKey || apiKey === "demo") {
+    return { ok: true, status: "processing" };
   }
 
   try {
-    const auth = `Basic ${Buffer.from(`${keyId}:${keySecret}`).toString("base64")}`;
-    const res  = await fetch(`https://api.razorpay.com/v1/payouts/${payoutId}`, {
-      headers: { "Authorization": auth, "Content-Type": "application/json" },
-      signal: AbortSignal.timeout(10_000),
+    const res = await fetch(`https://api.onmeta.in/v1/offramp/status/${payoutId}`, {
+      headers: { "x-api-key": apiKey },
+      signal:  AbortSignal.timeout(10_000),
     });
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({})) as Record<string, unknown>;
-      const errObj = err.error as Record<string, unknown> | undefined;
-      return { ok: false, error: String(errObj?.description ?? res.statusText) };
+      return { ok: false, error: `OnMeta ${res.status}: ${res.statusText}` };
     }
 
-    const data = await res.json() as RazorpayPayoutStatus;
-    return { ok: true, data };
+    const data = await res.json() as Record<string, unknown>;
+    const raw  = String(data.status ?? "processing").toLowerCase();
+
+    const status: NormalisedStatus =
+      raw === "completed" || raw === "processed" ? "completed" :
+      raw === "failed"    || raw === "rejected"  ? "failed"    :
+      "processing";
+
+    return { ok: true, status, utr: data.utr ? String(data.utr) : undefined };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Unknown" };
-  }
-}
-
-// ── Status mapping ────────────────────────────────────────────────────────────
-
-type AuronSettlementStatus = "pending" | "processing" | "completed" | "failed";
-
-function mapRazorpayStatus(rpStatus: string): AuronSettlementStatus {
-  switch (rpStatus) {
-    case "processed":  return "completed";
-    case "processing":
-    case "queued":
-    case "pending":    return "processing";
-    case "failed":
-    case "rejected":
-    case "cancelled":
-    case "reversed":   return "failed";
-    default:           return "processing";
   }
 }
 
@@ -105,148 +78,152 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const start = Date.now();
+  const start   = Date.now();
   const results = {
-    checked:         0,
-    alreadyCorrect:  0,
-    fixed:           0,
-    discrepancies:   [] as Array<{ settlementId: string; auron: string; razorpay: string; action: string }>,
-    errors:          0,
+    checked:        0,
+    alreadyCorrect: 0,
+    fixed:          0,
+    reset:          0,
+    errors:         0,
+    discrepancies:  [] as Array<{ settlementId: string; auron: string; provider: string; action: string }>,
   };
 
   console.log("[worker/reconcile] Starting reconciliation");
 
-  // Get settlements that need checking
   const settlements = await getSettlementsForReconciliation(50);
   console.log(`[worker/reconcile] Checking ${settlements.length} settlement(s)`);
 
-  // We need transaction data for each settlement — batch fetch via Supabase
-  const { createClient } = await import("@supabase/supabase-js");
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } }
-  );
+  const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
 
   for (const settlement of settlements) {
     results.checked++;
 
+    // ── Stuck in "processing" — reset to pending for retry ───────────────────
+    if (
+      settlement.status === "processing" &&
+      settlement.last_checked_at &&
+      new Date(settlement.last_checked_at) < tenMinutesAgo
+    ) {
+      console.warn(`[worker/reconcile] Resetting stuck settlement ${settlement.id}`);
+      await updateSettlement(settlement.id, {
+        status:          "pending",
+        last_checked_at: new Date(),
+      });
+      results.reset++;
+      continue;
+    }
+
+    // ── Demo settlements — resolve from raw_response ──────────────────────────
+    if (settlement.provider === "demo") {
+      const raw    = settlement.raw_response as Record<string, unknown> | null;
+      const status = raw?.status as string | undefined;
+      if (status === "completed" && settlement.status !== "completed") {
+        await updateSettlement(settlement.id, { status: "completed", last_checked_at: new Date() });
+        const txn = await getTransactionById(settlement.transaction_id);
+        if (txn.ok && txn.data.status !== "completed") {
+          await transitionTransaction(txn.data.id, "completed", {
+            reason:   "reconciliation: demo settlement resolved from raw_response",
+            metadata: { reconciled: true },
+          });
+        }
+        results.fixed++;
+      } else {
+        await updateSettlement(settlement.id, { last_checked_at: new Date() });
+        results.alreadyCorrect++;
+      }
+      continue;
+    }
+
+    // ── OnMeta settlements — check provider status ────────────────────────────
     if (!settlement.provider_payout_id) {
-      // No Razorpay payout ID yet — skip (settlement may still be queued)
+      // No payout ID yet — settlement worker hasn't fired or failed before recording
       await updateSettlement(settlement.id, { last_checked_at: new Date() });
       continue;
     }
 
-    // ── Fetch ground truth from Razorpay ──────────────────────────────────
-    const rpResult = await fetchRazorpayPayoutStatus(settlement.provider_payout_id);
+    const check = await checkOnMetaStatus(settlement.provider_payout_id);
 
-    if (!rpResult.ok) {
-      console.warn(
-        `[worker/reconcile] Failed to fetch payout ${settlement.provider_payout_id}: ${rpResult.error}`
-      );
+    if (!check.ok) {
+      console.warn(`[worker/reconcile] Status check failed for ${settlement.provider_payout_id}: ${check.error}`);
       await updateSettlement(settlement.id, { last_checked_at: new Date() });
       results.errors++;
       continue;
     }
 
-    const rpData       = rpResult.data;
-    const expectedStatus = mapRazorpayStatus(rpData.status);
-    const auronStatus    = settlement.status;
-
     await updateSettlement(settlement.id, { last_checked_at: new Date() });
 
-    if (expectedStatus === auronStatus) {
+    if (check.status === settlement.status) {
       results.alreadyCorrect++;
       continue;
     }
 
-    // ── Mismatch detected ─────────────────────────────────────────────────
+    // Mismatch
     console.warn(
       `[worker/reconcile] MISMATCH settlement=${settlement.id} ` +
-      `auron=${auronStatus} razorpay=${rpData.status}→${expectedStatus} ` +
-      `payoutId=${settlement.provider_payout_id}`
+      `auron=${settlement.status} onmeta=${check.status}`
     );
 
-    let action = "unknown";
+    let action = "none";
 
-    if (expectedStatus === "completed" && auronStatus !== "completed") {
-      // Razorpay processed it but we didn't record it — fix this
+    if (check.status === "completed" && settlement.status !== "completed") {
       await updateSettlement(settlement.id, {
-        status:             "completed",
-        utr:                rpData.utr,
-        provider_payout_id: rpData.id,
-        raw_response:       rpData as unknown as Record<string, unknown>,
+        status:          "completed",
+        utr:             check.utr,
+        last_checked_at: new Date(),
       });
-
-      // Fetch and fix the parent transaction
-      const { data: txn } = await supabase
-        .from("transactions")
-        .select("id, status")
-        .eq("id", settlement.transaction_id)
-        .single();
-
-      if (txn && txn.status !== "completed") {
-        await transitionTransaction(txn.id, "completed", {
-          reason: `Reconciliation: Razorpay payout ${rpData.id} was ${rpData.status}`,
-          metadata: { reconciled: true, razorpayStatus: rpData.status, utr: rpData.utr },
+      const txn = await getTransactionById(settlement.transaction_id);
+      if (txn.ok && txn.data.status !== "completed") {
+        await transitionTransaction(txn.data.id, "completed", {
+          reason:   "reconciliation: OnMeta payout confirmed",
+          metadata: { reconciled: true, utr: check.utr },
         });
       }
-
       action = "fixed_completed";
+      results.fixed++;
 
-    } else if (expectedStatus === "failed" && auronStatus === "completed") {
-      // ⚠️  Critical: we said success but Razorpay says failed
-      // This needs manual review — DO NOT auto-update; flag it
+    } else if (check.status === "failed" && settlement.status === "completed") {
+      // Critical — we told user success but provider says failed
       console.error(
-        `[worker/reconcile] CRITICAL DISCREPANCY: auron=completed but razorpay=${rpData.status} ` +
-        `payoutId=${settlement.provider_payout_id} failureReason=${rpData.failure_reason}`
+        `[worker/reconcile] CRITICAL payoutId=${settlement.provider_payout_id} ` +
+        `auron=completed onmeta=failed — manual review required`
       );
       action = "flagged_manual_review";
+      results.fixed++;
 
-    } else if (expectedStatus === "failed" && auronStatus !== "completed") {
-      // Razorpay failed, we have it as pending/processing — mark failed
+    } else if (check.status === "failed" && settlement.status !== "completed") {
       await updateSettlement(settlement.id, {
-        status:      "failed",
-        retry_count: 3,  // Prevent further retries
-        raw_response: rpData as unknown as Record<string, unknown>,
+        status:          "failed",
+        retry_count:     3,             // Prevent further retries
+        last_checked_at: new Date(),
       });
-
-      const { data: txn } = await supabase
-        .from("transactions")
-        .select("id, status")
-        .eq("id", settlement.transaction_id)
-        .single();
-
-      if (txn && txn.status !== "completed" && txn.status !== "failed") {
-        await transitionTransaction(txn.id, "failed", {
-          reason:          `Reconciliation: Razorpay payout ${rpData.id} failed (${rpData.failure_reason})`,
+      const txn = await getTransactionById(settlement.transaction_id);
+      if (txn.ok && txn.data.status !== "completed" && txn.data.status !== "failed") {
+        await transitionTransaction(txn.data.id, "failed", {
+          reason:          "reconciliation: OnMeta payout failed",
           failureCategory: "offramp_rejected",
-          metadata:        { reconciled: true, razorpayStatus: rpData.status },
+          metadata:        { reconciled: true },
         });
       }
-
       action = "fixed_failed";
+      results.fixed++;
     }
 
-    results.fixed++;
-    results.discrepancies.push({
-      settlementId: settlement.id,
-      auron:        auronStatus,
-      razorpay:     rpData.status,
-      action,
-    });
+    if (action !== "none") {
+      results.discrepancies.push({
+        settlementId: settlement.id,
+        auron:        settlement.status,
+        provider:     check.status,
+        action,
+      });
+    }
   }
 
   const durationMs = Date.now() - start;
   console.log(
-    `[worker/reconcile] Done: checked=${results.checked} ` +
+    `[worker/reconcile] Done checked=${results.checked} ` +
     `correct=${results.alreadyCorrect} fixed=${results.fixed} ` +
-    `errors=${results.errors} durationMs=${durationMs}`
+    `reset=${results.reset} errors=${results.errors} durationMs=${durationMs}`
   );
 
-  return NextResponse.json({
-    ...results,
-    durationMs,
-    ranAt: new Date().toISOString(),
-  });
+  return NextResponse.json({ ...results, durationMs, ranAt: new Date().toISOString() });
 }

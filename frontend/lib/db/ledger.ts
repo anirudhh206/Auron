@@ -176,6 +176,24 @@ export async function getTransactionByPaymentId(
   }
 }
 
+export async function getTransactionById(
+  id: string
+): Promise<LedgerResult<Transaction>> {
+  try {
+    const { data, error } = await db()
+      .from("transactions")
+      .select()
+      .eq("id", id)
+      .maybeSingle();
+
+    if (error) return { ok: false, error: error.message };
+    if (!data)  return { ok: false, error: "Not found" };
+    return { ok: true, data: data as Transaction };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown" };
+  }
+}
+
 export async function getTransactionByIdempotencyKey(
   key: string
 ): Promise<LedgerResult<Transaction>> {
