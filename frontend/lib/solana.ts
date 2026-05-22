@@ -223,7 +223,7 @@ export function getAccountExplorerUrl(address: string): string {
 }
 
 // ─── FX rate helpers ───────────────────────────────────────────────────────
-// Auron FX rate = market rate minus our 0.7% spread
+// Auron FX rate = market rate minus our 0.85% spread
 // Market rate is fetched at runtime; this is the fallback
 export const FALLBACK_USDC_INR_RATE = 83.15; // market ~84.00, Auron rate ~83.15
 

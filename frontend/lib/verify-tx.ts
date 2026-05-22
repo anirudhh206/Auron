@@ -22,9 +22,6 @@ import { Connection } from "@solana/web3.js";
 const USDC_MINT_MAINNET = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const USDC_MINT_DEVNET  = "Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr";
 
-// In-memory signature dedup (replace with Redis/DB in production)
-const settledSignatures = new Set<string>();
-
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface VerifyTxParams {
@@ -59,15 +56,6 @@ export async function verifyUsdcTransfer(
       verified:      false,
       demoMode:      false,
       failureReason: "No transaction signature provided and DEMO_SETTLEMENT is not enabled",
-    };
-  }
-
-  // Duplicate signature check
-  if (settledSignatures.has(params.signature)) {
-    return {
-      verified:      false,
-      demoMode,
-      failureReason: "This transaction signature has already been settled (duplicate)",
     };
   }
 
@@ -181,9 +169,6 @@ export async function verifyUsdcTransfer(
         failureReason: "No matching USDC transfer found in transaction",
       };
     }
-
-    // Mark signature as settled to prevent re-use
-    settledSignatures.add(params.signature);
 
     return {
       verified:            true,

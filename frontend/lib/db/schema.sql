@@ -98,6 +98,11 @@ CREATE TABLE IF NOT EXISTS status_history (
 -- ── Indexes ───────────────────────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_txn_payment_id       ON transactions(payment_id);
 CREATE INDEX IF NOT EXISTS idx_txn_idempotency_key  ON transactions(idempotency_key);
+-- Prevents replay attacks: same Solana signature cannot settle twice.
+-- Partial index allows multiple NULL values (unsigned/demo payments).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_txn_tx_signature
+  ON transactions(tx_signature)
+  WHERE tx_signature IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_txn_user_id          ON transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_txn_status           ON transactions(status);
 CREATE INDEX IF NOT EXISTS idx_txn_created_at       ON transactions(created_at DESC);

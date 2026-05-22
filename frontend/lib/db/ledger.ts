@@ -431,6 +431,28 @@ export async function getStatusHistory(
   }
 }
 
+// ── Replay protection ────────────────────────────────────────────────────────
+
+/**
+ * Returns true if a Solana tx signature has already been used in a
+ * verified, settling, or completed transaction. Fails open (returns false)
+ * on DB error so a network hiccup never blocks a legitimate payment.
+ */
+export async function isSignatureAlreadySettled(signature: string): Promise<boolean> {
+  try {
+    const { data } = await db()
+      .from("transactions")
+      .select("id")
+      .eq("tx_signature", signature)
+      .in("status", ["verified", "settling", "completed"])
+      .limit(1)
+      .maybeSingle();
+    return !!data;
+  } catch {
+    return false;
+  }
+}
+
 // ── Health check ──────────────────────────────────────────────────────────────
 
 export async function ledgerHealthCheck(): Promise<{ ok: boolean; latencyMs: number }> {

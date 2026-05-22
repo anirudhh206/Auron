@@ -1,157 +1,199 @@
 # Auron
 
-**Auron is AI-native financial infrastructure designed for programmable settlement, treasury orchestration, and cross-border money movement.**
+**Programmable financial infrastructure. Currently settling on Solana.**
 
-It currently settles on Solana. The blockchain is an implementation detail — not the product.
+Auron is a coordination layer between payment intent and settlement execution. It handles FX quoting, on-chain verification, multi-provider routing, retry orchestration, and full audit trail persistence — the same primitives production fintech systems are built on, wired to a stablecoin settlement rail.
+
+The blockchain is an implementation detail. The product is the infrastructure.
 
 **[Live Demo](https://auron-mocha.vercel.app) · [Pay Link](https://auron-mocha.vercel.app/pay/demo?amount=500&note=Lunch) · [Solana Blink](https://auron-mocha.vercel.app/api/actions/pay?to=demo&amount=500&currency=INR)**
 
 ---
 
-## The Problem
+## What's Live Today
 
-Global payments remain fragmented across banking rails, settlement windows, treasury systems, and regional intermediaries. Every transaction crosses multiple coordination boundaries — each introducing latency, opacity, and failure points with no unified view of settlement state.
+Every component below is in production code, not roadmap:
 
-Modern internet-native systems require programmable, real-time financial coordination capable of handling payment intent creation, settlement verification, treasury state tracking, and cross-border liquidity movement — without relying on legacy banking infrastructure designed for batch processing.
-
-Existing solutions fail because they optimize for a single rail. They are not coordination layers — they are wrappers.
-
----
-
-## Why Existing Systems Fall Short
-
-| System | Limitation |
-|---|---|
-| Traditional banking | Batch settlement windows, no programmability, no real-time state |
-| Current crypto wallets | Require users to understand blockchain primitives — unusable at scale |
-| UPI / domestic rails | Closed systems, no cross-border programmability, no treasury logic |
-| Stablecoin apps | Settlement only — no orchestration, no ledger, no lifecycle management |
-
-The gap is not in the rails themselves. The gap is in the coordination layer above them.
+| Component | Status | What it does |
+|---|---|---|
+| Payment intent layer | ✅ Live | Natural language → structured payment action via Claude |
+| FX quote engine | ✅ Live | Live CoinGecko rate, 0.85% spread, 60s locked quote |
+| On-chain verification | ✅ Live | 7-step USDC transfer verification before settlement |
+| Internal ledger | ✅ Live | Postgres-backed transaction + settlement + audit trail |
+| Settlement state machine | ✅ Live | 7-state lifecycle with atomic transitions |
+| Async settlement workers | ✅ Live | Queue-based execution with retry + reconciliation |
+| Multi-provider routing | ✅ Live | OnMeta (primary) + Razorpay (fallback), scored routing engine |
+| Anchor vault program | ✅ Devnet | Time-locked USDC custody, PDA-based, program-enforced |
+| Solana Blinks | ✅ Live | Every pay link is a natively composable action |
+| KYC system | ✅ Live | Middleware-gated, Supabase-tracked, provider-agnostic |
+| 6-layer security | ✅ Live | Risk scoring, spend ceiling, urgency detection, closed signing |
 
 ---
 
-## Auron Architecture
+## The Coordination Problem
 
-Auron is structured as a layered financial coordination system, not a monolithic application.
+India's UPI network processes ₹20 trillion per month across 350 million users. It is the most active real-time payment system on earth.
 
+It has no programmable layer. No treasury primitives. No cross-border settlement logic. No lifecycle management above the transaction level.
+
+Every attempt to build on top of it produces the same thing: a wrapper around a single rail that breaks at the coordination boundary.
+
+The gap is not in the rails. It is in the layer that sits above them — the layer that manages state, routes between providers, tracks settlement, and recovers from failure. That layer does not exist today as open, composable infrastructure.
+
+---
+
+## Architecture
+
+```mermaid
+graph TD
+    A[User — natural language intent] --> B[Intent Layer]
+    B --> C{Claude AI}
+    C --> D[Structured action + risk score]
+    D --> E[Quote Engine]
+    E --> F[Live FX rate · locked quote · 60s TTL]
+    F --> G[Preflight Checks]
+    G --> H[Wallet Signing — Phantom]
+    H --> I[On-chain Verification]
+    I -->|Hard gate| J[Ledger — initiated → verified]
+    J --> K[Routing Engine]
+    K --> L{Provider Selection}
+    L --> M[OnMeta — primary]
+    L --> N[Razorpay — fallback]
+    M --> O[Settlement Worker]
+    N --> O
+    O --> P[Ledger — settling → completed]
+    O --> Q[Reconciliation Worker]
+    Q --> P
+
+    style I fill:#1a1a2e,color:#fff
+    style J fill:#16213e,color:#fff
+    style O fill:#0f3460,color:#fff
+    style Q fill:#0f3460,color:#fff
 ```
-┌─────────────────────────────────────────────────────────┐
-│                     Client Layer                        │
-│        Natural language interface · PWA · Blinks        │
-└──────────────────────────┬──────────────────────────────┘
-                           │
-┌──────────────────────────▼──────────────────────────────┐
-│                   Intent Layer                          │
-│   Claude AI parses payment intent → structured action   │
-│   Risk scoring · preflight checks · security gates      │
-└──────────────────────────┬──────────────────────────────┘
-                           │
-┌──────────────────────────▼──────────────────────────────┐
-│          Settlement Orchestration Layer                 │
-│   Payment intent creation · queue-based execution       │
-│   Provider routing · retry logic · fallback handling    │
-└──────────────────────────┬──────────────────────────────┘
-                           │
-┌──────────────────────────▼──────────────────────────────┐
-│           Ledger & Verification Layer                   │
-│   Internal transaction ledger · state machine           │
-│   On-chain verification · reconciliation workers        │
-└──────────────────────────┬──────────────────────────────┘
-                           │
-┌──────────────────────────▼──────────────────────────────┐
-│               Solana Settlement Rail                    │
-│   USDC SPL transfers · Anchor vault program             │
-│   Memo stamps · Blinks · on-chain finality              │
-└─────────────────────────────────────────────────────────┘
-```
-
-Each layer is independently addressable. The settlement rail is replaceable.
 
 ---
 
 ## Settlement Lifecycle
 
-Every payment in Auron moves through a deterministic state machine:
+Every payment moves through a deterministic, persisted state machine. No payment proceeds without passing through each gate.
 
+```mermaid
+stateDiagram-v2
+    [*] --> initiated : Payment intent created
+    initiated --> quoted : FX rate locked
+    quoted --> signed : User signs on-chain transfer
+    signed --> verified : Server confirms on-chain transfer
+    verified --> settling : Settlement record created
+    settling --> completed : Provider confirms payout
+    settling --> failed : Max retries exceeded
+
+    verified --> failed : On-chain verification fails
+    completed --> [*]
+    failed --> [*]
 ```
-initiated → quoted → signed → verified → settling → completed
-                                                   ↘ failed
-```
 
-**initiated** — Payment intent created. Amounts, recipient, and provider recorded in ledger.
-
-**quoted** — FX rate locked. USDC equivalent calculated at point-in-time rate.
-
-**signed** — User wallet has signed the on-chain transfer. Signature recorded.
-
-**verified** — On-chain transfer independently confirmed against expected mint, amount, and treasury address. Hard block if verification fails — settlement never proceeds on unverified transactions.
-
-**settling** — Offramp provider called. Settlement record created. Async worker takes ownership.
-
-**completed / failed** — Final state. Immutable. Full audit trail preserved.
-
-This lifecycle is not aspirational — it is live in the current codebase.
+**Every transition is:**
+- Atomic — both `transactions` and `status_history` update in the same operation
+- Immutable — status history rows are never updated or deleted
+- Recoverable — failed settlements re-enter the worker queue automatically
 
 ---
 
-## Internal Ledger System
+## Internal Ledger
 
-Auron maintains an internal transaction ledger independent of blockchain finality to support deterministic transaction tracking, reconciliation, retries, and future multi-rail settlement coordination.
+Auron maintains a financial ledger independent of blockchain state — the same pattern Stripe, Razorpay, and Wise use to manage payment state across unreliable external systems.
 
-**Three-table schema in Supabase (PostgreSQL):**
+**Three-table schema (PostgreSQL via Supabase):**
 
 ```
-transactions        — single source of truth for every payment intent
-settlements         — one row per settlement attempt, tracks provider payout state
-status_history      — append-only audit trail, every transition recorded with timestamp + reason
+transactions     — single source of truth for every payment intent
+settlements      — one row per attempt; carries provider payout ID and UTR
+status_history   — append-only audit trail; every transition with timestamp + reason
 ```
-
-Every status transition writes atomically to both the `transactions` table and `status_history`. Settlement records carry the provider payout ID and UTR number for bank-level reconciliation.
 
 Row-level security is enabled on all tables. All writes go through the service role key on server-side routes — the client never touches the ledger directly.
 
-This architecture mirrors how production fintech systems (Stripe, Razorpay) manage payment state — independent of what the underlying rail reports.
+The ledger exists because blockchain finality is not the same as settlement finality. A confirmed Solana transaction does not mean a merchant received INR. The ledger tracks the full chain of custody from user intent to bank credit.
+
+---
+
+## On-Chain Verification
+
+Settlement never executes on an unverified transaction. Verification is a synchronous hard gate, not a background check.
+
+Before settlement, the server independently:
+
+1. Fetches the parsed transaction from Solana RPC
+2. Confirms `confirmed` or `finalized` commitment status
+3. Rejects transactions with any error field set
+4. Scans **all instructions including CPI inner instructions** — required because Phantom routes USDC transfers through the Associated Token Program, making the transfer invisible to top-level instruction inspection
+5. Verifies USDC mint address against expected devnet/mainnet mint
+6. Validates transfer amount within 1% tolerance (handles FX rounding)
+7. Checks idempotency — already-settled signatures are rejected
+
+If any check fails, the ledger is marked `failed` and the client receives a hard error. No settlement proceeds.
 
 ---
 
 ## Queue-Based Settlement Orchestration
 
-Settlement execution is handled asynchronously through queue-based orchestration workers, allowing transaction retries, status reconciliation, and non-blocking payment flows.
+Settlement execution is decoupled from the payment request. The API endpoint creates the ledger record and returns immediately. Workers handle execution.
 
-**Worker routes:**
-
-- `/api/workers/settlement` — claims pending settlements, executes payout calls, updates ledger
-- `/api/workers/reconcile` — polls in-flight settlements against provider status, marks completions
-
-**Claim pattern (optimistic locking):**
+**Two worker routes, scheduled via Vercel Cron:**
 
 ```
+/api/workers/settlement  — claims pending settlements, executes payout calls, updates ledger
+/api/workers/reconcile   — polls in-flight settlements against provider status, fixes discrepancies
+```
+
+**Claim pattern uses optimistic locking:**
+
+```sql
 UPDATE settlements
 SET status = 'processing'
-WHERE status = 'pending'
+WHERE id = $settlementId
+  AND status = 'pending'
   AND retry_count < 3
-  AND id = $settlementId
 ```
 
-This prevents double-processing across concurrent worker invocations without requiring distributed locks.
+This prevents double-processing across concurrent invocations without requiring distributed locks or external coordination.
 
-**Retry logic:** exponential backoff (1.5s → 3s → 6s), non-retryable errors (invalid UPI, KYC failures) are immediately terminated — retryable errors (timeouts, network failures) queue for re-attempt.
+**Retry classification:**
+- Retryable: timeouts, network failures → exponential backoff, re-queued
+- Non-retryable: invalid UPI ID, KYC rejection → terminated immediately, no retry
+
+**Reconciliation worker additionally handles:**
+- Settlements stuck in `processing` beyond 10 minutes → reset to `pending`
+- Provider-confirmed payouts not yet reflected in ledger → fixed automatically
+- Critical mismatch (Auron says completed, provider says failed) → flagged for manual review
 
 ---
 
-## Solana Settlement Rail
+## Routing Engine
 
-Auron currently uses Solana as the primary high-performance settlement rail due to its sub-second finality and near-zero transaction costs. The architecture is designed for multi-rail expansion.
+Provider selection is scored, not hardcoded. Adding a new settlement provider requires one row in a capability matrix.
 
-### Savings Vault — Anchor Program
+```
+Provider    Region    Fee      Speed     Status
+────────────────────────────────────────────────
+OnMeta      IN        0.5%     ~20s      Live
+Razorpay    IN        0.99%    ~15s      Live
+Transak     Global    1.5%     ~60s      Pending KYB
+Stripe      US/EU     2.9%     next-day  Pending
+Manual      Global    0%       ~1h       Always available
+```
 
-Custom Anchor program providing time-locked USDC custody. Treasury logic enforced at the program level — not database-enforced.
+Scoring weights fee 60%, speed 40%. The routing engine selects the best available provider for each payment's region and amount. Fallback is automatic.
+
+---
+
+## Solana Anchor Program
+
+Custom Anchor program providing time-locked USDC custody. Treasury logic is enforced at the program level — not database-enforced.
 
 - **Program ID:** `B5DwqnCoDrY8ezfGaZfpAnvZ4FwCtPNHk6vT5nRgFENg` (devnet)
-- **PDA derivation:** `[b"vault", owner_pubkey]` — one vault per user, deterministic address
-- **Instructions:** `lock_savings(amount, unlock_timestamp, label)` · `unlock_savings()`
-- **USDC custody:** held in ATA owned by the PDA — inaccessible to any party until `clock::unix_timestamp >= unlock_timestamp`
+- **PDA:** `[b"vault", owner_pubkey]` — one vault per user, deterministic address
+- **USDC custody:** held in an ATA owned by the PDA — no party can access funds until `clock::unix_timestamp >= unlock_timestamp`
 
 ```rust
 pub fn lock_savings(ctx, amount: u64, unlock_timestamp: i64, label: String) -> Result<()>
@@ -160,13 +202,11 @@ pub fn unlock_savings(ctx) -> Result<()>
 
 [View on Solscan (devnet)](https://solscan.io/account/B5DwqnCoDrY8ezfGaZfpAnvZ4FwCtPNHk6vT5nRgFENg?cluster=devnet)
 
-### Agreement Stamps & Ownership Proofs
+---
 
-Immutable timestamped records using the Solana Memo program. Permanently on-chain, verifiable by any party without trusting Auron.
+## Solana Blinks
 
-### Solana Blinks
-
-Full implementation of the [Solana Actions spec](https://docs.dialect.to/documentation/solana-actions). Every pay link is simultaneously a human-readable payment page and an interactive Blink operable inside X/Twitter, Dialect, and Phantom.
+Full implementation of the [Solana Actions spec](https://docs.dialect.to/documentation/solana-actions). Every pay link is simultaneously a human-readable payment page and a composable action operable inside X/Twitter, Dialect, and Phantom without leaving the host surface.
 
 ```
 GET  /api/actions/pay  →  action metadata + label
@@ -175,82 +215,117 @@ POST /api/actions/pay  →  serialized transaction for wallet signing
 
 ---
 
-## Transaction Verification
+## Why Solana
 
-Before any settlement executes, Auron independently verifies the on-chain transfer:
+Sub-second finality and near-zero fees make the on-chain leg of the payment flow invisible to users. A USDC transfer from user to treasury confirms in ~400ms at a cost of ~$0.00025 — fast enough that waiting for it is not a UX problem.
 
-1. Fetches the parsed transaction via Solana RPC
-2. Confirms `confirmed` or `finalized` commitment status
-3. Checks transaction error field — failed transactions are rejected
-4. Scans all instructions — including CPI inner instructions (required for Phantom's routing through the Associated Token Program)
-5. Verifies USDC mint address matches expected devnet/mainnet mint
-6. Validates transfer amount within 1% tolerance (handles FX rounding)
-7. Checks idempotency — already-settled signatures are rejected
+The composability story (Blinks, Actions) creates distribution channels that don't exist on slower chains. A pay link shared in a tweet becomes an executable payment without a redirect.
 
-Verification is a hard gate. Settlement never proceeds on a transaction that fails this check. No exceptions.
+The architecture is designed for multi-rail expansion. Solana is the current settlement rail. It is not the product.
 
 ---
 
 ## Intent Layer
 
-Auron abstracts payment execution behind a natural language coordination interface. Users express intent in plain language — the system resolves it into a structured, verifiable payment action.
+Users describe what they want in plain language. The system resolves it into a structured, verifiable action.
 
 ```
 "send ₹500 to Priya"
-→ { action: "upi_payment", inr_amount: 500, recipient: "priya@upi", usdc_amount: 5.98 }
+→ { action: "upi_payment", inr_amount: 500, recipient: "priya@upi", usdc_amount: 5.97 }
 
 "lock ₹2000 for 3 months"
-→ { action: "lock_savings", usdc_amount: 23.91, duration_days: 90, label: "savings" }
+→ { action: "lock_savings", usdc_amount: 23.88, duration_days: 90 }
 
 "scan and pay"
-→ QR scan → UPI payment intent → settlement flow
+→ QR scanner → UPI intent → full settlement flow
 ```
 
-**6-layer security gates run before every execution:**
+Powered by Claude Sonnet with prompt caching (90% cost reduction on repeated system prompt calls).
 
-1. **Intent mirror** — Explicit confirmation of what will execute
-2. **Scam detector** — Urgency language triggers mandatory slowdown
-3. **Spend ceiling** — User-defined per-transaction limit
-4. **Closed signing** — Wallet signing only via Auron-originated requests
-5. **Daily cap** — Hard ceiling, bounded exposure window
-6. **Risk scoring** — New recipients, unusual amounts, high frequency all flagged
+**Security gates before every execution:**
+
+| Layer | What it does |
+|---|---|
+| Intent mirror | Explicit confirmation before any execution |
+| Scam detector | Urgency keywords trigger mandatory 60s cooldown |
+| Spend ceiling | Per-transaction limit, user-configurable |
+| Risk scoring | New recipients, unusual amounts, velocity all scored 0–100 |
+| Closed signing | Wallet signs only Auron-originated requests |
+| Daily cap | Hard ceiling enforced server-side |
 
 ---
 
-## Developer Experience
+## Demo
 
-**Local setup:**
+**2-minute flow:**
+
+1. Open [auron-mocha.vercel.app](https://auron-mocha.vercel.app)
+2. Connect Phantom (devnet)
+3. Type: *"send ₹500 to demo@upi"*
+4. Confirm the quote — FX rate, USDC amount, and merchant locked
+5. Approve in Phantom — USDC transfers to Auron treasury on-chain
+6. Server verifies the transfer, creates settlement record
+7. Payout routes to merchant UPI via Razorpay
+8. Receipt with UTR number
+
+**Or use a pay link directly:**
+```
+https://auron-mocha.vercel.app/pay/demo?amount=500&note=Lunch
+```
+
+**Or trigger via Blink (paste in X/Twitter or Dialect):**
+```
+https://auron-mocha.vercel.app/api/actions/pay?to=demo&amount=500&currency=INR
+```
+
+---
+
+## Local Setup
 
 ```bash
 cd frontend
 npm install
 cp .env.example .env.local
-# Required: ANTHROPIC_API_KEY, NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
-# Optional: ONMETA_API_KEY (omit for demo mode), SOLANA_RPC_URL
 npm run dev
 ```
 
-**Database setup (Supabase SQL Editor):**
-
-```bash
-# Run frontend/lib/db/schema.sql in your Supabase project
-# Creates: transactions, settlements, status_history, users, kyc_submissions, contacts, intent_log
+**Required environment variables:**
+```
+ANTHROPIC_API_KEY              — Claude intent parsing
+NEXT_PUBLIC_SUPABASE_URL       — Supabase project URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY  — Supabase anon key
+SUPABASE_SERVICE_ROLE_KEY      — Service role key (server-side only)
 ```
 
-**Deploy Anchor program (devnet):**
+**Database (run `frontend/lib/db/schema.sql` in Supabase SQL Editor):**
+Creates: `transactions`, `settlements`, `status_history`, `users`, `kyc_submissions`, `contacts`, `intent_log`
 
-```bash
-# Requires WSL + Solana CLI + Anchor 0.32.1 + devnet SOL
-# Faucet: https://faucet.solana.com
-bash deploy.sh
+**Optional:**
+```
+ONMETA_API_KEY         — leave unset for demo mode (simulated payout)
+RAZORPAY_KEY_ID        — Razorpay payout credentials
+RAZORPAY_KEY_SECRET
+SOLANA_RPC_URL         — defaults to public devnet RPC
+DEMO_SETTLEMENT=true   — skip real payout, TX verification still runs
 ```
 
-**Environment flags:**
+---
 
-```
-DEMO_SETTLEMENT=true    — simulated payout, real TX verification still runs
-NEXT_PUBLIC_SOLANA_NETWORK=devnet | mainnet-beta
-```
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Framework | Next.js 14 App Router, TypeScript |
+| Intent Engine | Claude Sonnet — structured parsing, prompt caching |
+| Settlement Rail | Solana — USDC SPL transfers, Anchor vault program |
+| Ledger | Supabase PostgreSQL — transactions, settlements, audit trail |
+| Auth | Supabase — Google OAuth + phone OTP |
+| Wallet | Phantom — desktop + mobile deep link |
+| Offramp (primary) | OnMeta — USDC → INR via UPI |
+| Offramp (fallback) | Razorpay — UPI payouts |
+| Rate Limiting | Vercel KV |
+| Security | argon2id PIN, CSP headers, RLS on all DB tables |
+| Distribution | Solana Blinks, shareable pay links, PWA |
 
 ---
 
@@ -261,7 +336,7 @@ NEXT_PUBLIC_SOLANA_NETWORK=devnet | mainnet-beta
 - Internal ledger with full lifecycle management
 - On-chain verification engine
 - Queue-based settlement orchestration
-- Time-locked treasury vault (Anchor program)
+- Time-locked treasury vault
 
 **Phase 2 — Treasury Primitives**
 - Merchant settlement APIs
@@ -271,38 +346,25 @@ NEXT_PUBLIC_SOLANA_NETWORK=devnet | mainnet-beta
 - Expanded liquidity provider routing
 
 **Phase 3 — Sovereign Financial Infrastructure**
-- Multi-rail settlement support (SWIFT, Stellar, Lightning)
+- Multi-rail settlement (SWIFT, Stellar, Lightning)
 - Institutional treasury APIs
-- Intelligent liquidity routing
+- Intelligent liquidity routing across rails
 - Cross-border settlement coordination
 - Autonomous treasury orchestration agents
 
 ---
 
-## Why Now
+## Unit Economics (Live Mode)
 
-The convergence of stablecoin adoption, programmable settlement infrastructure, and AI systems capable of executing financial intent creates a narrow window for a new coordination layer to establish itself between legacy banking rails and the next generation of internet-native financial systems.
+At 10,000 transactions/day averaging ₹400:
 
-India's UPI infrastructure — 350 million users, ₹20 trillion monthly volume — represents the most active real-time payment network in the world. It has no programmable layer. No treasury primitives. No cross-border coordination.
+| Source | Daily | Annual |
+|---|---|---|
+| FX spread (0.85%) | ₹34,000 | ₹12.4M |
+| OnMeta fees (~0.5%) | −₹20,000 | −₹7.3M |
+| **Net** | **₹14,000** | **₹5.1M (~$61K USD)** |
 
-Auron is building that layer.
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Framework | Next.js 14 App Router, TypeScript |
-| Intent Engine | Claude Sonnet (structured intent parsing, prompt caching) |
-| Spending Intelligence | Claude Haiku (on-chain analytics, conversational) |
-| Settlement Rail | Solana — USDC SPL transfers, Anchor vault program |
-| Ledger | Supabase (PostgreSQL) — transactions, settlements, audit trail |
-| Auth | Supabase — Google OAuth + phone OTP |
-| Wallet | Phantom — desktop + mobile deep link protocol |
-| Rate Limiting | Vercel KV |
-| Security | argon2id PIN hashing, CSP headers, RLS on all DB tables |
-| Distribution | Solana Blinks, shareable pay links, PWA (Android) |
+Jupiter swap fees (0.3%) add on top for USDC→SOL flows.
 
 ---
 

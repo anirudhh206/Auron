@@ -1,38 +1,96 @@
 /**
  * POST /api/v1/pay — Canonical Payment Entry Point
  *
- * This is the single server-side endpoint that handles the full
- * settlement pipeline with a persistent ledger.
- *
  * Pipeline:
  *   1. Validate request body
- *   2. Idempotency check (return existing record if already processed)
- *   3. Create / update transaction in ledger (initiated → verified)
- *   4. Verify Solana USDC transfer on-chain
- *   5. Create settlement record (pending)
- *   6. Execute settlement via Razorpay (synchronous attempt)
- *   7. Update ledger with result (completed / failed)
- *   8. Return structured response
+ *   2. Idempotency + replay-protection checks
+ *   3. Create ledger record (initiated → quoted → signed)
+ *   4. Verify Solana USDC transfer on-chain (hard gate)
+ *   5. Transition ledger → verified → settling
+ *   6. Create settlement record (pending)
+ *   7. Dispatch to correct provider based on routing engine selection
+ *   8. Update ledger with result (completed / failed)
  *
- * On synchronous failure: settlement record stays in DB so the
- * background worker (/api/workers/settlement) can retry automatically.
- *
+ * On synchronous failure: settlement stays pending for worker retry.
  * GET /api/v1/payment/:id — poll for async status updates
  */
 
-import { NextRequest, NextResponse } from "next/server";
-import { verifyUsdcTransfer }         from "@/lib/verify-tx";
-import { initiateRazorpayPayout }     from "@/lib/razorpay";
+import { NextRequest, NextResponse }  from "next/server";
+import { verifyUsdcTransfer }          from "@/lib/verify-tx";
+import { initiateRazorpayPayout }      from "@/lib/razorpay";
+import { initiateOnMetaPayout }        from "@/lib/onmeta";
 import {
   createTransaction,
   transitionTransaction,
   createSettlement,
   updateSettlement,
   getTransactionByIdempotencyKey,
+  isSignatureAlreadySettled,
 } from "@/lib/db/ledger";
 
 export const runtime = "nodejs";
-export const maxDuration = 30;          // Vercel function timeout (seconds)
+export const maxDuration = 30;
+
+// ── Normalized settlement result ──────────────────────────────────────────────
+
+interface DispatchResult {
+  success:    boolean;
+  payoutId?:  string;
+  utr?:       string;
+  status?:    string;
+  error?:     string;
+  errorCode?: string;
+  retryable?: boolean;
+  provider:   string;
+}
+
+async function dispatchSettlement(
+  provider: string,
+  params: {
+    inrAmount:     number;
+    merchantUpiId: string;
+    merchantName:  string;
+    usdcAmount:    number;
+    idempotencyKey: string;
+    paymentId:     string;
+    txSignature:   string;
+    userId:        string;
+  }
+): Promise<DispatchResult> {
+  if (provider === "onmeta") {
+    try {
+      const r = await initiateOnMetaPayout({
+        usdcAmount:    params.usdcAmount,
+        merchantUpiId: params.merchantUpiId,
+        merchantName:  params.merchantName,
+        inrAmount:     params.inrAmount,
+        txSignature:   params.txSignature,
+        userId:        params.userId,
+      });
+      return {
+        success:   r.success,
+        payoutId:  r.payoutId,
+        utr:       r.utrNumber,
+        status:    r.status,
+        provider:  "onmeta",
+        retryable: true,
+      };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "OnMeta error";
+      return { success: false, error: msg, retryable: true, provider: "onmeta" };
+    }
+  }
+
+  // Default: razorpay
+  const r = await initiateRazorpayPayout({
+    amount:        params.inrAmount,
+    upiId:         params.merchantUpiId,
+    recipientName: params.merchantName,
+    referenceId:   params.idempotencyKey,
+    description:   `Auron ${params.paymentId.slice(0, 8)}`,
+  });
+  return { ...r, provider: "razorpay" };
+}
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -141,61 +199,73 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (existing.status === "completed") {
       console.log(`[v1/pay] IDEMPOTENT HIT (completed) paymentId=${d.paymentId}`);
       return NextResponse.json({
-        success:        true,
-        paymentId:      existing.payment_id,
-        status:         existing.status,
-        fromCache:      true,
-        durationMs:     Date.now() - start,
+        success: true, paymentId: existing.payment_id,
+        status: existing.status, fromCache: true, durationMs: Date.now() - start,
       });
     }
-    // For non-completed states, continue processing below
-    console.log(`[v1/pay] Existing record found, status=${existing.status} — continuing`);
+    console.log(`[v1/pay] Existing record status=${existing.status} — continuing`);
   }
 
-  // ── 2. Create / ensure transaction record ─────────────────────────────────
-  // DEMO_SETTLEMENT=true only skips Solana TX verification for signatures that
-  // look like test stubs (start with "demo_" or "test_").  Real wallet
-  // signatures always go through full on-chain verification regardless of this
-  // flag.  Settlement itself is always driven through Razorpay — the payout
-  // dispatch falls back to a realistic simulation only when RAZORPAY_ACCOUNT_ID
-  // is not yet configured (pre-KYB).  There is no separate "demo settlement"
-  // code path any more.
-  const skipTxVerification =
-    process.env.DEMO_SETTLEMENT === "true" &&
-    (d.txSignature.startsWith("demo_") || d.txSignature.startsWith("test_"));
+  // ── 2. Replay protection ──────────────────────────────────────────────────
+  const isStub = d.txSignature.startsWith("demo_") || d.txSignature.startsWith("test_");
+  const skipVerification = process.env.DEMO_SETTLEMENT === "true" && isStub;
 
+  if (!skipVerification) {
+    const alreadySettled = await isSignatureAlreadySettled(d.txSignature);
+    if (alreadySettled) {
+      console.warn(`[v1/pay] REPLAY ATTEMPT sig=${d.txSignature.slice(0, 12)}…`);
+      return NextResponse.json(
+        { success: false, paymentId: d.paymentId, error: "This transaction has already been settled", failureCategory: "duplicate_signature", retryable: false },
+        { status: 409 }
+      );
+    }
+  }
+
+  // ── 3. Create ledger record (initiated → quoted → signed) ─────────────────
   const txnResult = await createTransaction({
-    payment_id:       d.paymentId,
-    idempotency_key:  d.idempotencyKey,
-    user_id:          d.userId,
-    merchant_upi_id:  d.merchantUpiId,
-    merchant_name:    d.merchantName,
-    inr_amount:       d.inrAmount,
-    usdc_amount:      d.usdcAmount,
-    quote_fx_rate:    d.quoteFxRate,
-    tx_signature:     d.txSignature,
-    status:           "signed",
-    risk_score:       d.riskScore,
-    risk_flags:       d.riskFlags,
-    provider:         d.provider,
+    payment_id:        d.paymentId,
+    idempotency_key:   d.idempotencyKey,
+    user_id:           d.userId,
+    merchant_upi_id:   d.merchantUpiId,
+    merchant_name:     d.merchantName,
+    inr_amount:        d.inrAmount,
+    usdc_amount:       d.usdcAmount,
+    quote_fx_rate:     d.quoteFxRate,
+    tx_signature:      d.txSignature,
+    status:            "initiated",
+    risk_score:        d.riskScore,
+    risk_flags:        d.riskFlags,
+    provider:          d.provider,
     fallback_provider: d.fallbackProvider,
   });
 
   if (!txnResult.ok) {
     console.error("[v1/pay] Failed to create ledger record:", txnResult.error);
-    // Non-fatal: continue even if DB write fails (degrade gracefully)
   }
 
   const txnId = txnResult.ok ? txnResult.data.id : null;
 
-  // ── 3. Verify Solana TX ───────────────────────────────────────────────────
+  // Walk the state machine forward: initiated → quoted → signed
+  if (txnId) {
+    if (d.quoteFxRate) {
+      await transitionTransaction(txnId, "quoted", {
+        reason: `FX rate locked at ₹${d.quoteFxRate}/USDC`,
+      });
+    }
+    await transitionTransaction(txnId, "signed", {
+      reason:      "User signed on-chain USDC transfer",
+      txSignature: d.txSignature,
+    });
+  }
+
+  // ── 4. Verify Solana TX ───────────────────────────────────────────────────
   let verifiedTx = false;
 
-  if (skipTxVerification) {
+  if (skipVerification) {
     verifiedTx = true;
     console.log(`[v1/pay] Test stub signature — skipping on-chain verification`);
   } else {
-    console.log(`[v1/pay] Verifying tx on-chain: ${d.txSignature.slice(0, 12)}…`);
+    console.log(`[v1/pay] Verifying tx: ${d.txSignature.slice(0, 12)}…`);
     const verification = await verifyUsdcTransfer({
       signature:           d.txSignature,
       expectedFromAddress: d.userId,
@@ -206,148 +276,91 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     verifiedTx = verification.verified;
 
     if (!verification.verified) {
-      // Hard block — do not settle
       if (txnId) {
         await transitionTransaction(txnId, "failed", {
-          reason:          "Solana TX verification failed",
-          errorMessage:    verification.failureReason,
-          failureCategory: "tx_simulation_failed",
+          reason: "Solana TX verification failed", errorMessage: verification.failureReason, failureCategory: "tx_simulation_failed",
         });
       }
-
       console.error(`[v1/pay] TX VERIFICATION FAILED reason="${verification.failureReason}"`);
       return NextResponse.json(
-        {
-          success:         false,
-          paymentId:       d.paymentId,
-          error:           verification.failureReason ?? "Transaction verification failed",
-          failureCategory: "tx_simulation_failed",
-          retryable:       false,
-          verifiedTx:      false,
-          durationMs:      Date.now() - start,
-        },
+        { success: false, paymentId: d.paymentId, error: verification.failureReason ?? "Transaction verification failed", failureCategory: "tx_simulation_failed", retryable: false, verifiedTx: false, durationMs: Date.now() - start },
         { status: 422 }
       );
     }
-
-    console.log(`[v1/pay] TX verified on-chain ✓`);
+    console.log(`[v1/pay] TX verified ✓`);
   }
 
-  // Transition to verified
   if (txnId) {
-    await transitionTransaction(txnId, "verified", { reason: "Solana USDC transfer confirmed" });
+    await transitionTransaction(txnId, "verified", { reason: "On-chain USDC transfer confirmed" });
   }
 
-  // ── 4. Create settlement record ───────────────────────────────────────────
+  // ── 5. Create settlement record + transition to settling ──────────────────
   let settlementId: string | null = null;
+  const provider = d.provider ?? "razorpay";
 
   if (txnId) {
-    const stlResult = await createSettlement({
-      transaction_id: txnId,
-      provider:       d.provider ?? "razorpay",
-      status:         "pending",
-    });
+    const stlResult = await createSettlement({ transaction_id: txnId, provider, status: "pending" });
     settlementId = stlResult.ok ? stlResult.data.id : null;
-
-    if (txnId) {
-      await transitionTransaction(txnId, "settling", { reason: `Settlement queued via ${d.provider}` });
-    }
+    await transitionTransaction(txnId, "settling", { reason: `Settlement dispatched via ${provider}` });
   }
 
-  // ── 5. Execute settlement via Razorpay ───────────────────────────────────
-  // Steps 1 & 2 (contact + fund account) always hit the real Razorpay API.
-  // Step 3 (payout dispatch) hits Razorpay X when RAZORPAY_ACCOUNT_ID is set;
-  // otherwise it generates a realistic UTR/payout-ID internally.
-  // See lib/razorpay.ts → createPayout for the dispatch logic.
-  const razorpayResult = await initiateRazorpayPayout({
-    amount:        d.inrAmount,
-    upiId:         d.merchantUpiId,
-    recipientName: d.merchantName,
-    referenceId:   d.idempotencyKey,
-    description:   `Auron ${d.paymentId.slice(0, 8)}`,
+  // ── 6. Dispatch to provider selected by routing engine ────────────────────
+  const result = await dispatchSettlement(provider, {
+    inrAmount:      d.inrAmount,
+    merchantUpiId:  d.merchantUpiId,
+    merchantName:   d.merchantName,
+    usdcAmount:     d.usdcAmount,
+    idempotencyKey: d.idempotencyKey,
+    paymentId:      d.paymentId,
+    txSignature:    d.txSignature,
+    userId:         d.userId,
   });
 
   const durationMs = Date.now() - start;
 
-  if (razorpayResult.success) {
-    // Update ledger to completed
+  if (result.success) {
     if (txnId) {
       await transitionTransaction(txnId, "completed", {
-        reason: `Razorpay payout succeeded payoutId=${razorpayResult.payoutId}`,
+        reason: `${provider} payout succeeded payoutId=${result.payoutId}`,
       });
     }
     if (settlementId) {
       await updateSettlement(settlementId, {
-        status:             "completed",
-        provider_payout_id: razorpayResult.payoutId,
-        utr:                razorpayResult.utr,
-        last_checked_at:    new Date(),
-        raw_response:       razorpayResult as unknown as Record<string, unknown>,
+        status: "completed", provider_payout_id: result.payoutId,
+        utr: result.utr, last_checked_at: new Date(),
+        raw_response: result as unknown as Record<string, unknown>,
       });
     }
 
-    console.log(
-      `[v1/pay] SUCCESS paymentId=${d.paymentId} ` +
-      `payoutId=${razorpayResult.payoutId} utr=${razorpayResult.utr ?? "pending"} ` +
-      `durationMs=${durationMs}`
-    );
+    console.log(`[v1/pay] SUCCESS paymentId=${d.paymentId} provider=${provider} payoutId=${result.payoutId} utr=${result.utr ?? "pending"} durationMs=${durationMs}`);
 
     return NextResponse.json({
-      success:    true,
-      paymentId:  d.paymentId,
-      payoutId:   razorpayResult.payoutId,
-      utrNumber:  razorpayResult.utr,
-      status:     razorpayResult.status ?? "processed",
-      verifiedTx,
-      demoMode:   false,
-      provider:   "razorpay",
-      durationMs,
+      success: true, paymentId: d.paymentId,
+      payoutId: result.payoutId, utrNumber: result.utr,
+      status: result.status ?? "processed",
+      verifiedTx, provider, durationMs,
     });
   }
 
-  // Settlement failed — update ledger but leave settlement as 'pending' for worker retry
-  const httpStatus = razorpayResult.retryable ? 502 : 422;
+  // ── 7. Settlement failed ──────────────────────────────────────────────────
+  const httpStatus = result.retryable ? 502 : 422;
 
-  if (txnId && !razorpayResult.retryable) {
-    // Non-retryable: mark failed immediately
+  if (txnId && !result.retryable) {
     await transitionTransaction(txnId, "failed", {
-      reason:          `Razorpay payout non-retryable error: ${razorpayResult.error}`,
-      errorMessage:    razorpayResult.error,
-      failureCategory: razorpayResult.errorCode ?? "offramp_rejected",
+      reason: `${provider} payout non-retryable: ${result.error}`,
+      errorMessage: result.error, failureCategory: result.errorCode ?? "offramp_rejected",
     });
     if (settlementId) {
-      await updateSettlement(settlementId, {
-        status:      "failed",
-        retry_count: 3,   // Max out retries so worker skips it
-        raw_response: razorpayResult as unknown as Record<string, unknown>,
-      });
+      await updateSettlement(settlementId, { status: "failed", retry_count: 3, raw_response: result as unknown as Record<string, unknown> });
     }
   } else if (settlementId) {
-    // Retryable: reset to pending so worker picks it up
-    await updateSettlement(settlementId, {
-      status:      "pending",
-      raw_response: razorpayResult as unknown as Record<string, unknown>,
-    });
+    await updateSettlement(settlementId, { status: "pending", raw_response: result as unknown as Record<string, unknown> });
   }
 
-  console.error(
-    `[v1/pay] FAILED paymentId=${d.paymentId} ` +
-    `error="${razorpayResult.error}" retryable=${razorpayResult.retryable} ` +
-    `durationMs=${durationMs}`
-  );
+  console.error(`[v1/pay] FAILED paymentId=${d.paymentId} provider=${provider} error="${result.error}" retryable=${result.retryable} durationMs=${durationMs}`);
 
   return NextResponse.json(
-    {
-      success:         false,
-      paymentId:       d.paymentId,
-      error:           razorpayResult.error,
-      errorCode:       razorpayResult.errorCode,
-      failureCategory: razorpayResult.errorCode ?? "offramp_rejected",
-      retryable:       razorpayResult.retryable,
-      verifiedTx,
-      demoMode:        false,
-      durationMs,
-    },
+    { success: false, paymentId: d.paymentId, error: result.error, errorCode: result.errorCode, failureCategory: result.errorCode ?? "offramp_rejected", retryable: result.retryable, verifiedTx, durationMs },
     { status: httpStatus }
   );
 }

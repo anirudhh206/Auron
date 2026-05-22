@@ -4,10 +4,10 @@
  * Pipeline:
  *   1. Validate request body
  *   2. Idempotency check via ledger DB
- *   3. Create ledger record (status: initiated)
- *   4. Verify Solana transaction on-chain (hard gate)
- *   5. Transition ledger → verified → settling
- *   6. Create settlement record (status: pending)
+ *   3. Replay protection — DB unique index + status check
+ *   4. Create ledger record (initiated → quoted → signed)
+ *   5. Verify Solana transaction on-chain (hard gate)
+ *   6. Transition ledger → verified → settling + queue settlement
  *   7. Return immediately — worker executes the payout async
  *
  * The actual OnMeta call happens in /api/workers/settlement (Vercel Cron).
@@ -21,6 +21,7 @@ import {
   transitionTransaction,
   createSettlement,
   getTransactionByIdempotencyKey,
+  isSignatureAlreadySettled,
 } from "@/lib/db/ledger";
 
 export const runtime = "nodejs";
@@ -58,7 +59,7 @@ function validate(body: unknown): { ok: true; data: ValidatedRequest } | { ok: f
   if (typeof b.usdcAmount     !== "number" || b.usdcAmount <= 0)  return { ok: false, error: "usdcAmount must be a positive number" };
   if (typeof b.userId         !== "string" || !b.userId.trim())   return { ok: false, error: "userId is required" };
 
-  if (b.inrAmount  > MAX_INR_PER_TX)  return { ok: false, error: `₹${(b.inrAmount as number).toLocaleString("en-IN")} exceeds per-tx limit` };
+  if (b.inrAmount  > MAX_INR_PER_TX)  return { ok: false, error: `₹${Number(b.inrAmount).toLocaleString("en-IN")} exceeds per-tx limit` };
   if (b.usdcAmount > MAX_USDC_PER_TX) return { ok: false, error: `${b.usdcAmount} USDC exceeds per-tx limit` };
 
   return {
@@ -106,7 +107,22 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     });
   }
 
-  // ── 2. Create ledger record ─────────────────────────────────────────────────
+  // ── 2. Replay protection ─────────────────────────────────────────────────────
+  const isStub = data.txSignature.startsWith("demo_") || data.txSignature.startsWith("test_");
+  const skipVerification = demoMode && isStub;
+
+  if (!skipVerification && data.txSignature) {
+    const alreadySettled = await isSignatureAlreadySettled(data.txSignature);
+    if (alreadySettled) {
+      console.warn(`[offramp] REPLAY ATTEMPT sig=${data.txSignature.slice(0, 12)}…`);
+      return NextResponse.json(
+        { error: "This transaction has already been settled", failureCategory: "duplicate_signature", paymentId: data.paymentId, retryable: false },
+        { status: 409 }
+      );
+    }
+  }
+
+  // ── 3. Create ledger record (initiated → quoted → signed) ───────────────────
   const createResult = await createTransaction({
     payment_id:      data.paymentId,
     idempotency_key: data.idempotencyKey,
@@ -122,7 +138,22 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   const transactionId = createResult.ok ? createResult.data.id : null;
 
-  // ── 3. Verify Solana transaction ────────────────────────────────────────────
+  if (transactionId) {
+    const computedRate = data.usdcAmount > 0 ? data.inrAmount / data.usdcAmount : undefined;
+    if (computedRate) {
+      await transitionTransaction(transactionId, "quoted", {
+        reason: `FX rate locked at ₹${computedRate.toFixed(2)}/USDC`,
+      });
+    }
+    if (data.txSignature) {
+      await transitionTransaction(transactionId, "signed", {
+        reason:      "User signed on-chain USDC transfer",
+        txSignature: data.txSignature,
+      });
+    }
+  }
+
+  // ── 4. Verify Solana transaction ────────────────────────────────────────────
   let verifiedTx = false;
   let blockTime: number | undefined;
 
@@ -162,7 +193,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
   }
 
-  // ── 4. Transition to settling + queue settlement record ─────────────────────
+  // ── 5. Transition to settling + queue settlement record ─────────────────────
   if (transactionId) {
     await transitionTransaction(transactionId, "settling", {
       reason: "queued_for_async_settlement",
@@ -179,7 +210,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   console.log(`[offramp] QUEUED paymentId=${data.paymentId} verifiedTx=${verifiedTx}`);
 
-  // ── 5. Return immediately — worker handles the rest ─────────────────────────
+  // ── 6. Return immediately — worker handles the rest ─────────────────────────
   return NextResponse.json({
     queued:     true,
     paymentId:  data.paymentId,
