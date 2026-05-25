@@ -31,8 +31,8 @@ export const SAVINGS_VAULT_PROGRAM_ID = new PublicKey(
   "B5DwqnCoDrY8ezfGaZfpAnvZ4FwCtPNHk6vT5nRgFENg"
 );
 
-// devnet USDC
-const USDC_MINT_DEVNET  = new PublicKey("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU");
+// devnet USDC (spl-token-faucet mint — matches lib/solana.ts and lib/verify-tx.ts)
+const USDC_MINT_DEVNET  = new PublicKey("Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr");
 // mainnet USDC
 const USDC_MINT_MAINNET = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 

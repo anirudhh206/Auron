@@ -62,19 +62,17 @@ function validate(body: unknown): { ok: true; data: ValidatedRequest } | { ok: f
   if (b.inrAmount  > MAX_INR_PER_TX)  return { ok: false, error: `₹${Number(b.inrAmount).toLocaleString("en-IN")} exceeds per-tx limit` };
   if (b.usdcAmount > MAX_USDC_PER_TX) return { ok: false, error: `${b.usdcAmount} USDC exceeds per-tx limit` };
 
-  return {
-    ok: true,
-    data: {
-      paymentId:      b.paymentId as string,
-      idempotencyKey: b.idempotencyKey as string,
-      merchantUpiId:  (b.merchantUpiId as string).trim(),
-      merchantName:   (b.merchantName  as string).trim(),
-      inrAmount:      b.inrAmount  as number,
-      usdcAmount:     b.usdcAmount as number,
-      txSignature:    typeof b.txSignature === "string" ? b.txSignature : "",
-      userId:         (b.userId as string).trim(),
-    },
+  const data: ValidatedRequest = {
+    paymentId:      String(b.paymentId),
+    idempotencyKey: String(b.idempotencyKey),
+    merchantUpiId:  String(b.merchantUpiId).trim(),
+    merchantName:   String(b.merchantName).trim(),
+    inrAmount:      Number(b.inrAmount),
+    usdcAmount:     Number(b.usdcAmount),
+    txSignature:    typeof b.txSignature === "string" ? b.txSignature : "",
+    userId:         String(b.userId).trim(),
   };
+  return { ok: true, data };
 }
 
 // ── Route handler ─────────────────────────────────────────────────────────────

@@ -48,7 +48,7 @@ const RPC = process.env.NEXT_PUBLIC_HELIUS_RPC_URL
 // USDC mint addresses
 const USDC_MINT = process.env.NEXT_PUBLIC_SOLANA_NETWORK === "mainnet-beta"
   ? new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")
-  : new PublicKey("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"); // devnet USDC
+  : new PublicKey("Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr"); // devnet USDC (spl-token-faucet)
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",

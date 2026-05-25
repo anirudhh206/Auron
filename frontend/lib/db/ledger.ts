@@ -453,6 +453,39 @@ export async function isSignatureAlreadySettled(signature: string): Promise<bool
   }
 }
 
+// ── Intent analytics ─────────────────────────────────────────────────────────
+
+/**
+ * Append an anonymised intent row — no PII, no recipient addresses, no names.
+ * Fire-and-forget: callers should never await this; failures are non-fatal.
+ */
+export async function logIntent(entry: {
+  action_type:    string | null;
+  confidence?:    number | null;
+  amount_usdc?:   number | null;
+  duration_days?: number | null;
+  input_length:   number;
+  parsed_ok:      boolean;
+  network?:       string;
+}): Promise<void> {
+  try {
+    await db()
+      .from("intent_log")
+      .insert({
+        action_type:   entry.action_type   ?? "unknown",
+        confidence:    entry.confidence    ?? null,
+        amount_usdc:   entry.amount_usdc   ?? null,
+        duration_days: entry.duration_days ?? null,
+        input_length:  entry.input_length,
+        parsed_ok:     entry.parsed_ok,
+        network:       entry.network ?? process.env.NEXT_PUBLIC_SOLANA_NETWORK ?? "devnet",
+      });
+  } catch (err) {
+    // Non-fatal — analytics write failure must never affect the user
+    console.error("[ledger] logIntent error:", err instanceof Error ? err.message : err);
+  }
+}
+
 // ── Health check ──────────────────────────────────────────────────────────────
 
 export async function ledgerHealthCheck(): Promise<{ ok: boolean; latencyMs: number }> {

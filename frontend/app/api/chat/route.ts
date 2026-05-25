@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { kv } from "@vercel/kv";
 import { detectUrgency, evaluateAmount, SecurityFlag } from "@/lib/security";
+import { logIntent } from "@/lib/db/ledger";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -306,6 +307,16 @@ export async function POST(req: NextRequest) {
                 securityFlags,
                 requiresSlowdown,
               });
+
+              // ── Log intent analytics (fire-and-forget, no PII) ────────
+              logIntent({
+                action_type:   typeof actionJson?.action === "string" ? actionJson.action : null,
+                confidence:    typeof actionJson?.confidence === "number" ? actionJson.confidence : null,
+                amount_usdc:   typeof actionJson?.amount_usdc === "number" ? actionJson.amount_usdc : null,
+                duration_days: typeof actionJson?.duration_days === "number" ? actionJson.duration_days : null,
+                input_length:  message.length,
+                parsed_ok:     actionJson !== null,
+              }).catch(() => {});
 
               controller.close();
             }
