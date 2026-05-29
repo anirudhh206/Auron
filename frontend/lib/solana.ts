@@ -32,7 +32,7 @@ export const RPC_ENDPOINT =
 export function getConnection(): Connection {
   return new Connection(RPC_ENDPOINT, {
     commitment: "confirmed",
-    confirmTransactionInitialTimeout: 60_000,
+    confirmTransactionInitialTimeout: 120_000, // 2 min — devnet public RPC can be slow
     disableRetryOnRateLimit: false,
   });
 }

@@ -493,10 +493,17 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
         const latestBlockhash = await connection.getLatestBlockhash("confirmed");
         await connection.confirmTransaction({ signature, ...latestBlockhash }, "confirmed");
       } catch {
-        const status = await connection.getSignatureStatus(signature);
-        const landed =
-          status.value?.confirmationStatus === "confirmed" ||
-          status.value?.confirmationStatus === "finalized";
+        // confirmTransaction timed out — tx may still be propagating on devnet.
+        // Poll up to 5 times (15 seconds total) before giving up.
+        let landed = false;
+        for (let attempt = 0; attempt < 5; attempt++) {
+          if (attempt > 0) await new Promise(r => setTimeout(r, 3_000));
+          const status = await connection.getSignatureStatus(signature, { searchTransactionHistory: true });
+          landed =
+            status.value?.confirmationStatus === "confirmed" ||
+            status.value?.confirmationStatus === "finalized";
+          if (landed) break;
+        }
         if (!landed) {
           transition("failed", "Confirmation timeout — Solana may be congested.");
           updateRecord((r) => ({
@@ -885,10 +892,16 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
         const latestBlockhash = await connection.getLatestBlockhash("confirmed");
         await connection.confirmTransaction({ signature, ...latestBlockhash }, "confirmed");
       } catch {
-        // Tx may still land — check one more time
-        const status = await connection.getSignatureStatus(signature);
-        const landed = status.value?.confirmationStatus === "confirmed" ||
-                       status.value?.confirmationStatus === "finalized";
+        // confirmTransaction timed out — tx may still be propagating on devnet.
+        // Poll up to 5 times (15 seconds total) before giving up.
+        let landed = false;
+        for (let attempt = 0; attempt < 5; attempt++) {
+          if (attempt > 0) await new Promise(r => setTimeout(r, 3_000));
+          const status = await connection.getSignatureStatus(signature, { searchTransactionHistory: true });
+          landed = status.value?.confirmationStatus === "confirmed" ||
+                   status.value?.confirmationStatus === "finalized";
+          if (landed) break;
+        }
         if (!landed) {
           transition("failed", "Transaction confirmation timeout — Solana network may be congested.");
           updateRecord((r) => ({

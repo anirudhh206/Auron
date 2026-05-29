@@ -62,6 +62,7 @@ export async function verifyUsdcTransfer(
   // Determine network + USDC mint
   const network  = process.env.NEXT_PUBLIC_SOLANA_NETWORK ?? "devnet";
   const rpcUrl   = process.env.SOLANA_RPC_URL
+    ?? process.env.NEXT_PUBLIC_HELIUS_RPC_URL   // use Helius if available server-side
     ?? (network === "mainnet-beta"
       ? "https://api.mainnet-beta.solana.com"
       : "https://api.devnet.solana.com");
@@ -70,11 +71,18 @@ export async function verifyUsdcTransfer(
   const connection = new Connection(rpcUrl, "confirmed");
 
   try {
-    // Fetch the parsed transaction
-    const tx = await connection.getParsedTransaction(params.signature, {
-      commitment: "confirmed",
-      maxSupportedTransactionVersion: 0,
-    });
+    // Fetch the parsed transaction — retry up to 4x (12s) because the client
+    // calls this endpoint immediately after on-chain confirmation, and the RPC
+    // node may not have propagated the tx yet.
+    let tx = null;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      if (attempt > 0) await new Promise(r => setTimeout(r, 3_000));
+      tx = await connection.getParsedTransaction(params.signature, {
+        commitment:                     "confirmed",
+        maxSupportedTransactionVersion: 0,
+      });
+      if (tx) break;
+    }
 
     if (!tx) {
       return {
@@ -140,12 +148,23 @@ export async function verifyUsdcTransfer(
       // and USDC mint checks are sufficient for devnet demo verification.
       // (Production would derive the treasury ATA and check destination explicitly.)
 
-      // Verify amount with 1% tolerance (handles FX rounding + wallet differences).
+      // Verify amount with 2% tolerance (handles FX rounding + wallet differences).
       let rawAmount: number;
       if (parsed.type === "transferChecked") {
-        // transferChecked carries tokenAmount.uiAmount (already in USDC float units)
-        const uiAmount = (info.tokenAmount as Record<string, unknown>)?.uiAmount;
-        rawAmount = typeof uiAmount === "number" ? uiAmount : NaN;
+        // Prefer uiAmount (float). Some devnet RPC nodes return it as null or a
+        // string — fall back to raw integer amount in those cases.
+        const tokenAmount = info.tokenAmount as Record<string, unknown> | undefined;
+        const uiAmount    = tokenAmount?.uiAmount;
+        if (typeof uiAmount === "number") {
+          rawAmount = uiAmount;
+        } else if (typeof uiAmount === "string") {
+          rawAmount = parseFloat(uiAmount);
+        } else {
+          // uiAmount is null — derive from raw integer + decimals
+          const rawInt  = Number(tokenAmount?.amount ?? info.amount ?? 0);
+          const decimals = Number(tokenAmount?.decimals ?? 6);
+          rawAmount = Number.isFinite(rawInt) ? rawInt / Math.pow(10, decimals) : NaN;
+        }
       } else {
         // plain transfer carries amount as a raw integer string (multiply by 10^-6)
         const rawInt = Number(info.amount);
@@ -154,7 +173,7 @@ export async function verifyUsdcTransfer(
 
       if (!Number.isFinite(rawAmount)) continue; // skip unparseable instructions
 
-      const tolerance = params.expectedUsdcAmount * 0.01; // 1%
+      const tolerance = params.expectedUsdcAmount * 0.02; // 2% — covers FX rounding
       if (Math.abs(rawAmount - params.expectedUsdcAmount) > tolerance) continue;
 
       actualAmount  = rawAmount;

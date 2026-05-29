@@ -1,18 +1,3 @@
-/**
- * /api/offramp — Payment Intent & Queue Entry Point
- *
- * Pipeline:
- *   1. Validate request body
- *   2. Idempotency check via ledger DB
- *   3. Replay protection — DB unique index + status check
- *   4. Create ledger record (initiated → quoted → signed)
- *   5. Verify Solana transaction on-chain (hard gate)
- *   6. Transition ledger → verified → settling + queue settlement
- *   7. Return immediately — worker executes the payout async
- *
- * The actual OnMeta call happens in /api/workers/settlement (Vercel Cron).
- * Poll /api/v1/payment/:paymentId for status updates.
- */
 
 import { NextRequest, NextResponse } from "next/server";
 import { verifyUsdcTransfer } from "@/lib/verify-tx";
