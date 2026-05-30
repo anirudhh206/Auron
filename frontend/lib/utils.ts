@@ -6,13 +6,6 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/** Format ucless (6 decimals) → human readable CLESS */
-export function formatCless(ucless: number | string): string {
-  const n = typeof ucless === "string" ? Number.parseFloat(ucless) : ucless;
-  const cless = n / 1_000_000;
-  return cless.toLocaleString("en-IN", { maximumFractionDigits: 4 });
-}
-
 /** Shorten a wallet address for display */
 export function shortAddr(addr: string): string {
   if (!addr) return "";

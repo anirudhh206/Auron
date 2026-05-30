@@ -105,27 +105,6 @@ export async function notifyTxFailed(action: string, reason: string): Promise<vo
   }
 }
 
-/** Show a yield available reminder (future: Solana DeFi vaults) */
-export async function notifyYieldAvailable(vaultId: string, yieldAmount: string): Promise<void> {
-  const push = await getPush();
-  if (!push) return;
-
-  try {
-    await (push as any).schedule?.({
-      notifications: [
-        {
-          id: Date.now(),
-          title: "💰 Yield ready to claim",
-          body: `${yieldAmount} USDC earned from vault ${vaultId}. Open Auron to claim.`,
-          channelId: "auron-tx",
-          schedule: { at: new Date(Date.now() + 100) },
-        },
-      ],
-    });
-  } catch {
-    // Silently skip
-  }
-}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function humaniseAction(action: string): string {

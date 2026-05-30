@@ -46,9 +46,9 @@ export async function initiateOnMetaPayout(
     await new Promise(r => setTimeout(r, 800)); // simulate network delay
     return {
       success: true,
-      payoutId: `demo_${Date.now()}`,
+      payoutId: `demo_payout_${Date.now()}`,
       status: "completed",
-      utrNumber: `UTR${Date.now()}`,
+      utrNumber: `DEMO_${Date.now()}`,   // clearly prefixed — never confused with real bank UTRs
       estimatedDelivery: "Completed (demo)",
     };
   }

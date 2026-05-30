@@ -514,7 +514,7 @@ function CompleteStep() {
           </li>
           <li className="flex items-center gap-2 text-emerald-300 text-sm">
             <Check size={14} className="shrink-0" />
-            Lock savings & earn yield
+            Lock savings on-chain
           </li>
         </ul>
       </div>
