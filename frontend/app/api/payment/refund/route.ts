@@ -89,7 +89,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const result: RefundResult = {
       success: true,
       txSignature: null,
-      message: `Demo: ₹${(usdcAmount * 83.15).toFixed(0)} equivalent USDC would be refunded to your wallet within 24 hours. Auron support has been notified.`,
+      message: `Demo: ${usdcAmount.toFixed(6)} USDC would be refunded to your wallet within 24 hours. Auron support has been notified.`,
       isDemo: true,
       processedAt: Date.now(),
     };

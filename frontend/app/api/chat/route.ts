@@ -32,7 +32,7 @@ ACTION RULES:
 - "transfer": user wants to send money but token not specified (ask to clarify, or default to USDC)
 - "upi_payment": user is paying an Indian merchant via UPI QR or UPI ID (e.g. "Pay ₹450 to merchant@paytm", "Pay to merchant via UPI ID xyz@upi")
   → USDC goes to Auron treasury; Auron's off-ramp sends INR to the merchant's UPI ID instantly
-  → Extract: upi_id (the UPI ID e.g. "merchant@paytm"), merchant_name (display name), inr_amount (₹ value as number), amount_usdc (inr_amount / 83.15, rounded to 6 decimal places)
+  → Extract: upi_id (the UPI ID e.g. "merchant@paytm"), merchant_name (display name), inr_amount (₹ value as number). Set amount_usdc to null — the server computes the authoritative USDC amount from the live rate + spread at execution time.
   → Do NOT set recipient field for upi_payment (treasury address is handled server-side)
   → If inr_amount is missing, set ambiguity to ask how much to pay
 - "stamp_agreement": user wants to record a deal, IOU, promise, or debt on-chain
@@ -41,7 +41,7 @@ ACTION RULES:
 - null: you need more info — put your clarifying question in the "ambiguity" field
 
 AMOUNT RULES:
-- ₹ / Rs / rupees → convert to USDC using 1 USDC = ₹83.15 (round to 6 decimal places), set amount_usdc. Also set inr_amount to the original ₹ value.
+- ₹ / Rs / rupees → set inr_amount to the ₹ value. Set amount_usdc to null. The live rate is fetched server-side at execution time — never hardcode a rate.
 - SOL amounts → set amount field
 - USDC amounts → set amount_usdc field
 - Never guess amounts. If unclear → null + set ambiguity.

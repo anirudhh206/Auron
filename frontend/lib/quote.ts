@@ -30,9 +30,9 @@ export interface Quote {
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
-export const QUOTE_TTL_MS      = 60_000;  // 60-second validity window
-export const SPREAD_PERCENT    = 0.85;    // Auron's FX spread (revenue)
-export const FALLBACK_RATE_INR = 83.15;  // used if live rate unavailable
+export const QUOTE_TTL_MS      = 60_000;
+export const SPREAD_PERCENT    = parseFloat(process.env.AURON_SPREAD_PERCENT  ?? "0.85");
+export const FALLBACK_RATE_INR = parseFloat(process.env.FALLBACK_FX_RATE_INR  ?? "84.00");
 
 // ── Factory ───────────────────────────────────────────────────────────────────
 

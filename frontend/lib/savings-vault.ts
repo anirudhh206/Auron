@@ -28,7 +28,8 @@ import {
 // ─── Program constants ────────────────────────────────────────────────────────
 
 export const SAVINGS_VAULT_PROGRAM_ID = new PublicKey(
-  "B5DwqnCoDrY8ezfGaZfpAnvZ4FwCtPNHk6vT5nRgFENg"
+  process.env.NEXT_PUBLIC_SAVINGS_VAULT_PROGRAM_ID ??
+  "B5DwqnCoDrY8ezfGaZfpAnvZ4FwCtPNHk6vT5nRgFENg" // devnet default
 );
 
 // devnet USDC (spl-token-faucet mint — matches lib/solana.ts and lib/verify-tx.ts)

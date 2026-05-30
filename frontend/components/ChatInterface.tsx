@@ -714,7 +714,7 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
       merchantUpiId,
       merchantName,
       fromAddress: address,
-      toAddress: process.env.NEXT_PUBLIC_FEE_WALLET ?? "G2FAbFQPFa5qKXCetoFZQEvF9TdM4yE6UwqroeN9BCWQ",
+      toAddress: process.env.NEXT_PUBLIC_FEE_WALLET ?? "",
     });
 
     // Attach quote metadata immediately
@@ -825,8 +825,15 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
       }
 
       // ── Step 2: Build Solana tx ─────────────────────────────────────────
+      // IMPORTANT: override action.amount_usdc with the live-quoted usdcAmount.
+      // Claude's parsed amount_usdc uses an internal estimate rate; the quote
+      // API returns the authoritative amount at the live rate + spread.
+      // The transaction on-chain must match what /api/v1/pay sends for verification.
       transition("building_tx", "Building Solana transaction…");
-      const txResult = await buildTxResult(action, confirmText);
+      const txResult = await buildTxResult(
+        { ...action, amount_usdc: usdcAmount },
+        confirmText
+      );
 
       // ── Step 3: Await user signature ────────────────────────────────────
       transition("awaiting_signature", "Waiting for Phantom signature");
@@ -834,7 +841,7 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
 
       // Mobile deep-link path: redirect to Phantom, resume after redirect-back
       if (deepLink.isMobileDevice && !deepLink.isInPhantomBrowser && deepLink.isConnected) {
-        const toAddress = process.env.NEXT_PUBLIC_FEE_WALLET ?? "G2FAbFQPFa5qKXCetoFZQEvF9TdM4yE6UwqroeN9BCWQ";
+        const toAddress = process.env.NEXT_PUBLIC_FEE_WALLET ?? "";
         const paymentContext: MobilePaymentContext = {
           paymentId:      record.paymentId,
           idempotencyKey: record.idempotencyKey,

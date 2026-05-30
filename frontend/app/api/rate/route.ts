@@ -18,9 +18,10 @@ interface RateCache {
 }
 
 let cache: RateCache | null = null;
-const CACHE_TTL_MS = 60_000;        // 1-minute cache
-const AURON_SPREAD = 0.0085;        // 0.85% spread — Auron's revenue
-const FALLBACK_MARKET_RATE = 84.00; // used if CoinGecko is unreachable
+const CACHE_TTL_MS = 60_000;
+// Spread and fallback driven by env vars — never hardcoded
+const AURON_SPREAD         = parseFloat(process.env.AURON_SPREAD_PERCENT  ?? "0.0085");
+const FALLBACK_MARKET_RATE = parseFloat(process.env.FALLBACK_FX_RATE_INR  ?? "84.00");
 
 export async function GET(): Promise<NextResponse> {
   // Return cached rate if still fresh

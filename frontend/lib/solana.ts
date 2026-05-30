@@ -223,9 +223,11 @@ export function getAccountExplorerUrl(address: string): string {
 }
 
 // ─── FX rate helpers ───────────────────────────────────────────────────────
-// Auron FX rate = market rate minus our 0.85% spread
-// Market rate is fetched at runtime; this is the fallback
-export const FALLBACK_USDC_INR_RATE = 83.15; // market ~84.00, Auron rate ~83.15
+// Emergency fallback only — never use for transaction amounts.
+// Real rate always comes from /api/rate (CoinGecko + spread).
+export const FALLBACK_USDC_INR_RATE = parseFloat(
+  process.env.NEXT_PUBLIC_FALLBACK_FX_RATE ?? "84.00"
+);
 
 export function usdcToINR(usdc: number, rate = FALLBACK_USDC_INR_RATE): number {
   return usdc * rate;

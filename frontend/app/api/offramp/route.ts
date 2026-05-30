@@ -14,9 +14,10 @@ export const runtime = "nodejs";
 const MAX_INR_PER_TX  = 200_000;
 const MAX_USDC_PER_TX = 2_500;
 
-const TREASURY_ADDRESS =
-  process.env.NEXT_PUBLIC_FEE_WALLET ??
-  "G2FAbFQPFa5qKXCetoFZQEvF9TdM4yE6UwqroeN9BCWQ";
+const TREASURY_ADDRESS = process.env.NEXT_PUBLIC_FEE_WALLET;
+if (!TREASURY_ADDRESS) {
+  throw new Error("NEXT_PUBLIC_FEE_WALLET is not set. Treasury address is required.");
+}
 
 // ── Validation ────────────────────────────────────────────────────────────────
 

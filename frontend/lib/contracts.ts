@@ -8,10 +8,7 @@ import {
   NETWORK,
 } from "./solana";
 
-// Devnet demo treasury — used when NEXT_PUBLIC_FEE_WALLET env var is not set.
-// Replace this with your actual treasury address in production.
 const SYSTEM_PROGRAM = "11111111111111111111111111111111";
-const DEMO_TREASURY = "G2FAbFQPFa5qKXCetoFZQEvF9TdM4yE6UwqroeN9BCWQ"; // Auron devnet treasury
 
 // ─── Action result type ────────────────────────────────────────────────────
 // Solana supports both legacy Transaction and VersionedTransaction (Jupiter uses versioned)
@@ -193,13 +190,12 @@ export async function buildUPIPayment(
   if (!upiId?.trim())
     throw new Error("UPI ID is required");
 
-  // Resolve treasury address — fall back to demo treasury on devnet if not configured
-  const treasuryAddress = FEE_WALLET.toString() === SYSTEM_PROGRAM
-    ? DEMO_TREASURY
-    : FEE_WALLET.toString();
-
-  if (!isValidSolanaAddress(treasuryAddress)) {
-    throw new Error("Auron treasury wallet address is not configured. Set NEXT_PUBLIC_FEE_WALLET.");
+  // Treasury address must be set via NEXT_PUBLIC_FEE_WALLET — no silent fallback
+  const treasuryAddress = FEE_WALLET.toString();
+  if (treasuryAddress === SYSTEM_PROGRAM || !isValidSolanaAddress(treasuryAddress)) {
+    throw new Error(
+      "Treasury wallet not configured. Set NEXT_PUBLIC_FEE_WALLET in your .env.local."
+    );
   }
 
   const from = new PublicKey(fromAddress);

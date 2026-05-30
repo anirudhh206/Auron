@@ -68,6 +68,10 @@ export async function verifyUsdcTransfer(
       : "https://api.devnet.solana.com");
   const usdcMint = network === "mainnet-beta" ? USDC_MINT_MAINNET : USDC_MINT_DEVNET;
 
+  // Debug: log which RPC is being used (mask the API key)
+  const rpcDisplay = rpcUrl.replace(/api-key=[^&]+/, "api-key=***");
+  console.log(`[verify-tx] RPC: ${rpcDisplay} | sig: ${params.signature.slice(0, 12)}… | expectedUsdc: ${params.expectedUsdcAmount}`);
+
   const connection = new Connection(rpcUrl, "confirmed");
 
   try {
@@ -81,10 +85,12 @@ export async function verifyUsdcTransfer(
         commitment:                     "confirmed",
         maxSupportedTransactionVersion: 0,
       });
+      console.log(`[verify-tx] attempt ${attempt + 1}/4 — tx found: ${!!tx}`);
       if (tx) break;
     }
 
     if (!tx) {
+      console.error(`[verify-tx] tx not found after 4 attempts on RPC: ${rpcDisplay}`);
       return {
         verified:      false,
         demoMode,
@@ -120,10 +126,23 @@ export async function verifyUsdcTransfer(
     // Associated Token Program via CPI, so the actual SPL transfer often
     // appears only in innerInstructions, not in the top-level list.
     type ParsedIx = { parsed?: unknown; program?: string };
-    const allInstructions: ParsedIx[] = [
-      ...(tx.transaction.message.instructions as ParsedIx[]),
-      ...(tx.meta?.innerInstructions?.flatMap((i) => i.instructions as ParsedIx[]) ?? []),
-    ];
+    const topLevel = tx.transaction.message.instructions as ParsedIx[];
+    const inner    = tx.meta?.innerInstructions?.flatMap((i) => i.instructions as ParsedIx[]) ?? [];
+    const allInstructions: ParsedIx[] = [...topLevel, ...inner];
+
+    console.log(
+      `[verify-tx] instructions — top: ${topLevel.length} inner: ${inner.length} total: ${allInstructions.length}`
+    );
+    allInstructions.forEach((ix, i) => {
+      const p = ix.parsed as Record<string, unknown> | undefined;
+      console.log(
+        `[verify-tx] ix[${i}] program=${ix.program ?? "?"} ` +
+        `parsed=${!!p} type=${p?.type ?? "—"} ` +
+        (p?.type === "transfer" || p?.type === "transferChecked"
+          ? `amount=${JSON.stringify((p.info as Record<string,unknown>)?.amount ?? (p.info as Record<string,unknown>)?.tokenAmount)}`
+          : "")
+      );
+    });
 
     let transferFound  = false;
     let actualAmount   = 0;

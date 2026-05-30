@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 
-export const FALLBACK_RATE = 83.15;
+// Driven by env var — never a hardcoded rate
+export const FALLBACK_RATE = parseFloat(process.env.NEXT_PUBLIC_FALLBACK_FX_RATE ?? "84.00");
 
 export interface LiveRate {
   marketRate: number;
@@ -34,7 +35,7 @@ export function useLiveRate() {
         setRate({
           marketRate: FALLBACK_RATE,
           auronRate: FALLBACK_RATE,
-          spreadPercent: "0.85%",
+          spreadPercent: `${parseFloat(process.env.NEXT_PUBLIC_AURON_SPREAD_PERCENT ?? "0.85")}%`,
           usdcPer1000Inr: Number.parseFloat((1000 / FALLBACK_RATE).toFixed(6)),
           cached: false,
           fallback: true,
