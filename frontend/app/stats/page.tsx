@@ -3,9 +3,10 @@
 import { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence }           from "framer-motion";
 import {
-  Zap, TrendingUp, CheckCircle, Clock,
+  TrendingUp, CheckCircle, Clock,
   Wallet, ArrowUpRight, RefreshCw, Shield,
 } from "lucide-react";
+import AuronLogo from "@/components/AuronLogo";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -168,10 +169,7 @@ export default function StatsPage() {
         >
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-              <Zap size={18} style={{ color: "#C9A84C" }} />
-              <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.12em", color: "#C9A84C", textTransform: "uppercase" }}>
-                Auron
-              </span>
+              <AuronLogo size={22} showText textSize={13} />
               {/* LIVE badge */}
               <span
                 style={{

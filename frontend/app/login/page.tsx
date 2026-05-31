@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import { useStore } from "@/store/useStore";
-import { Zap, Eye, EyeOff, Check, ArrowRight, Loader2, ChevronRight, Phone, ShieldCheck } from "lucide-react";
+import { Eye, EyeOff, Check, ArrowRight, Loader2, ChevronRight, Phone, ShieldCheck } from "lucide-react";
+import AuronLogo from "@/components/AuronLogo";
 
 // ── Types ─────────────────────────────────────────────────────
 type AuthMode = "signin" | "signup";
@@ -342,10 +343,7 @@ export default function LoginPage() {
 
         {/* Logo */}
         <div className="flex items-center gap-3 relative z-10">
-          <div className="login-logo-icon w-10 h-10 rounded-xl flex items-center justify-center">
-            <Zap size={18} fill="currentColor" className="text-[#0A0A0F]" aria-hidden="true" />
-          </div>
-          <span className="font-display font-bold text-xl gradient-text-gold">AURON</span>
+          <AuronLogo size={36} showText textSize={18} />
         </div>
 
         {/* Carousel */}
@@ -429,10 +427,7 @@ export default function LoginPage() {
                 transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
               >
                 <div className="flex items-center gap-2 mb-8 lg:hidden">
-                  <div className="login-logo-icon w-8 h-8 rounded-xl flex items-center justify-center">
-                    <Zap size={14} fill="currentColor" className="text-[#0A0A0F]" aria-hidden="true" />
-                  </div>
-                  <span className="font-display font-bold gradient-text-gold">AURON</span>
+                  <AuronLogo size={30} showText textSize={15} />
                 </div>
 
                 <h1 className="font-display font-bold text-3xl sm:text-4xl mb-2 text-text-primary">
@@ -578,8 +573,8 @@ export default function LoginPage() {
                 transition={{ duration: 0.4 }}
                 className="text-center"
               >
-                <div className="w-14 h-14 rounded-2xl btn-gold flex items-center justify-center mx-auto mb-6">
-                  <Zap size={24} fill="currentColor" className="text-[#0A0A0F]" />
+                <div className="flex items-center justify-center mx-auto mb-6">
+                  <AuronLogo size={56} />
                 </div>
                 <h2 className="font-display font-bold text-2xl sm:text-3xl mb-2 text-text-primary">
                   {step === "pin" ? "Set your PIN" : "Confirm your PIN"}
@@ -865,7 +860,7 @@ export default function LoginPage() {
                   className="btn-gold animate-btn-pulse inline-flex items-center gap-2 px-10 py-4 rounded-2xl font-bold text-base"
                   aria-label="Enter Auron"
                 >
-                  <Zap size={18} fill="currentColor" aria-hidden="true" />
+                  <AuronLogo size={18} />
                   Enter Auron
                   <ArrowRight size={16} aria-hidden="true" />
                 </motion.button>

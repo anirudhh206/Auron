@@ -1,6 +1,8 @@
 // Route-level loading skeleton for /app
 // Shown by Next.js suspense during initial navigation
 
+import AuronLogo from "@/components/AuronLogo";
+
 export default function AppLoading() {
   return (
     <div
@@ -8,14 +10,8 @@ export default function AppLoading() {
       style={{ background: "#030712" }}
     >
       {/* Pulsing logo */}
-      <div
-        className="w-14 h-14 rounded-2xl flex items-center justify-center animate-pulse"
-        style={{
-          background: "linear-gradient(135deg, rgba(201,168,76,0.3) 0%, rgba(201,168,76,0.1) 100%)",
-          border: "1px solid rgba(201,168,76,0.25)",
-        }}
-      >
-        <span style={{ fontSize: 24 }}>⚡</span>
+      <div className="animate-pulse">
+        <AuronLogo size={52} />
       </div>
 
       {/* Shimmer lines */}

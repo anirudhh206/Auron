@@ -4,8 +4,9 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   CheckCircle2, Copy, ExternalLink, Download,
-  Shield, Zap, X,
+  Shield, X,
 } from "lucide-react";
+import AuronLogo from "@/components/AuronLogo";
 import { PaymentRecord } from "@/lib/payment-state";
 import { getTxExplorerUrl } from "@/lib/solana";
 
@@ -272,9 +273,7 @@ export default function PaymentReceipt({ payment, onClose }: PaymentReceiptProps
 
           {/* ── Auron branding ──────────────────────────────────── */}
           <div className="flex items-center justify-center gap-2 py-1">
-            <div className="w-5 h-5 rounded-lg btn-gold flex items-center justify-center">
-              <Zap size={10} fill="currentColor" className="text-[#0A0A0F]" />
-            </div>
+            <AuronLogo size={16} />
             <span className="text-[10px] font-semibold" style={{ color: "rgba(255,255,255,0.2)" }}>
               Powered by Auron · Solana · OnMeta
             </span>

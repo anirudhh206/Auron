@@ -6,6 +6,7 @@ import {
   CheckCircle2, XCircle, RefreshCw, Clock, Zap,
   ArrowRight, AlertTriangle, RotateCcw, ExternalLink, Copy,
 } from "lucide-react";
+import AuronLogo from "@/components/AuronLogo";
 import {
   PaymentRecord,
   PaymentStatus,
@@ -506,9 +507,9 @@ function StatusIcon({ status }: { status: PaymentStatus }) {
     <motion.div
       animate={{ scale: [1, 1.08, 1] }}
       transition={{ duration: 1.6, repeat: Infinity }}
-      className="w-8 h-8 rounded-xl btn-gold flex items-center justify-center shrink-0"
+      className="shrink-0"
     >
-      <Zap size={14} fill="currentColor" className="text-[#0A0A0F]" />
+      <AuronLogo size={32} />
     </motion.div>
   );
 }

@@ -17,7 +17,8 @@
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Zap, Copy, Check, ExternalLink, ArrowRight, Wallet, Loader2, CheckCircle2 } from "lucide-react";
+import { Copy, Check, ExternalLink, ArrowRight, Wallet, Loader2, CheckCircle2 } from "lucide-react";
+import AuronLogo from "@/components/AuronLogo";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -112,10 +113,7 @@ export default function PayPage() {
       >
         {/* Header */}
         <div className="flex items-center justify-center gap-2 mb-8">
-          <div className="w-7 h-7 rounded-lg btn-gold flex items-center justify-center">
-            <Zap size={12} fill="currentColor" className="text-[#080810]" />
-          </div>
-          <span className="font-black text-xs tracking-widest" style={{ color: "var(--auron-gold)" }}>AURON</span>
+          <AuronLogo size={26} showText textSize={12} />
         </div>
 
         {/* Card */}
@@ -176,7 +174,7 @@ export default function PayPage() {
                   whileTap={{ scale: 0.97 }}
                   className="w-full flex items-center justify-center gap-2 py-4 rounded-xl font-black text-sm text-[#080810] btn-gold disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  <Zap size={16} fill="currentColor" />
+                  <AuronLogo size={16} />
                   Pay with Auron
                   <ArrowRight size={14} />
                 </motion.button>

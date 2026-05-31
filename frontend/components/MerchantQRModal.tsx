@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import QRCode from "react-qr-code";
-import { X, Copy, CheckCircle2, Zap, Share2, ExternalLink } from "lucide-react";
+import { X, Copy, CheckCircle2, Share2, ExternalLink } from "lucide-react";
+import AuronLogo from "@/components/AuronLogo";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { USDC_MINT, shortAddr } from "@/lib/solana";
@@ -98,9 +99,7 @@ export default function MerchantQRModal({ onClose, user }: MerchantQRModalProps)
           style={{ borderBottom: "1px solid rgba(201,168,76,0.1)" }}
         >
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl btn-gold flex items-center justify-center shrink-0">
-              <Zap size={14} fill="currentColor" className="text-[#0A0A0F]" />
-            </div>
+            <AuronLogo size={28} />
             <div className="leading-tight">
               <p className="text-sm font-bold text-white">My Auron QR</p>
               <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
@@ -157,10 +156,10 @@ export default function MerchantQRModal({ onClose, user }: MerchantQRModalProps)
                     className="absolute inset-0 flex items-center justify-center pointer-events-none"
                   >
                     <div
-                      className="w-9 h-9 rounded-xl btn-gold flex items-center justify-center"
-                      style={{ boxShadow: "0 0 0 4px #ffffff" }}
+                      className="w-9 h-9 rounded-xl flex items-center justify-center"
+                      style={{ background: "#060610", boxShadow: "0 0 0 4px #ffffff" }}
                     >
-                      <Zap size={15} fill="currentColor" className="text-[#0A0A0F]" />
+                      <AuronLogo size={28} />
                     </div>
                   </div>
                 </div>
@@ -281,7 +280,7 @@ export default function MerchantQRModal({ onClose, user }: MerchantQRModalProps)
                   border: "1px solid rgba(201,168,76,0.18)",
                 }}
               >
-                <Zap size={26} style={{ color: "rgba(201,168,76,0.5)" }} />
+                <AuronLogo size={32} />
               </div>
               <div>
                 <p className="text-sm font-semibold text-white mb-1">

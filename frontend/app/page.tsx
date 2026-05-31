@@ -8,6 +8,7 @@ import {
   Send, Lock, FileText, ShieldCheck, Shield,
   Link2, Globe, MessageSquare, Sparkles, Twitter,
 } from "lucide-react";
+import AuronLogo from "@/components/AuronLogo";
 
 // ─────────────────────────────────────────────────────────────
 // Root
@@ -62,10 +63,7 @@ function Nav({ onCTA }: { readonly onCTA: () => void }) {
       }}
     >
       <div className="flex items-center gap-3">
-        <div className="w-8 h-8 rounded-xl btn-gold flex items-center justify-center">
-          <Zap size={14} fill="currentColor" className="text-[#080810]" />
-        </div>
-        <span className="font-display font-black text-sm tracking-widest gradient-text-gold">AURON</span>
+        <AuronLogo size={30} showText textSize={13} />
       </div>
 
       <div className="flex items-center gap-8">

@@ -17,9 +17,10 @@ import MerchantQRModal from "@/components/MerchantQRModal";
 import NetworkMismatchBanner from "@/components/NetworkMismatchBanner";
 import { usePhantomDeepLink } from "@/hooks/usePhantomDeepLink";
 import {
-  Zap, QrCode, MessageSquare, History, LogOut, Send,
+  QrCode, MessageSquare, History, LogOut, Send,
   Lock, FileText, ShieldCheck, Wallet, ArrowRight, ChevronRight,
 } from "lucide-react";
+import AuronLogo from "@/components/AuronLogo";
 import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
 
@@ -84,8 +85,8 @@ export default function AppPage() {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: "var(--bg-base)" }}>
         <div className="flex flex-col items-center gap-4">
-          <div className="w-10 h-10 rounded-xl btn-gold flex items-center justify-center animate-pulse">
-            <Zap size={18} fill="currentColor" className="text-[#0A0A0F]" />
+          <div className="animate-pulse">
+            <AuronLogo size={44} />
           </div>
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>Loading Auron...</p>
         </div>
@@ -124,13 +125,9 @@ export default function AppPage() {
           style={{ borderBottom: "1px solid rgba(201,168,76,0.1)" }}
         >
           <Link href="/" className="flex items-center gap-3">
-            <motion.div whileHover={{ scale: 1.05, rotate: -5 }} transition={{ type: "spring", stiffness: 400 }}
-              className="w-9 h-9 rounded-xl btn-gold flex items-center justify-center">
-              <Zap size={17} fill="currentColor" className="text-[#0A0A0F]" />
+            <motion.div whileHover={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 400 }}>
+              <AuronLogo size={34} showText textSize={16} />
             </motion.div>
-            <div className="leading-none">
-              <span className="font-display font-bold text-lg gradient-text-gold">AURON</span>
-            </div>
           </Link>
 
           <div className="flex items-center gap-2">
@@ -194,11 +191,8 @@ export default function AppPage() {
           className="relative z-20 flex items-center justify-between px-5 py-3 glass-strong shrink-0"
           style={{ borderBottom: "1px solid rgba(201,168,76,0.1)" }}
         >
-          <Link href="/" className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl btn-gold flex items-center justify-center">
-              <Zap size={15} fill="currentColor" className="text-[#0A0A0F]" />
-            </div>
-            <span className="font-display font-bold text-base gradient-text-gold tracking-wide">AURON</span>
+          <Link href="/">
+            <AuronLogo size={30} showText textSize={14} />
           </Link>
 
           <div className="flex items-center gap-2">

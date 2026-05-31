@@ -12,7 +12,8 @@ declare class BarcodeDetector {
   detect(source: HTMLVideoElement | HTMLCanvasElement | ImageBitmap): Promise<Array<{ rawValue: string }>>;
   static getSupportedFormats(): Promise<string[]>;
 }
-import { X, Camera, RefreshCw, CheckCircle2, Zap, ArrowRight, Wallet } from "lucide-react";
+import { X, Camera, RefreshCw, CheckCircle2, ArrowRight, Wallet } from "lucide-react";
+import AuronLogo from "@/components/AuronLogo";
 
 // ─── UPI QR ───────────────────────────────────────────────────────────────────
 export interface ParsedUPI {
@@ -322,9 +323,7 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
         style={{ borderBottom: "1px solid rgba(201,168,76,0.12)" }}
       >
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl btn-gold flex items-center justify-center shrink-0">
-            <Zap size={14} fill="currentColor" className="text-[#0A0A0F]" />
-          </div>
+          <AuronLogo size={28} />
           <div className="leading-tight">
             <p className="text-sm font-bold text-white">Scan to Pay</p>
             <p className="text-[10px] mt-0.5" style={{ color: "var(--text-muted)" }}>

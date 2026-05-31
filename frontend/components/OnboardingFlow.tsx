@@ -5,6 +5,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { useStore } from "@/store/useStore";
 import { cn, shortAddr } from "@/lib/utils";
 import { ChevronRight, Lock, Zap, FileText, DollarSign, Check, AlertCircle } from "lucide-react";
+import AuronLogo from "@/components/AuronLogo";
 
 type Step = "welcome" | "pin" | "ceiling" | "features" | "complete";
 
@@ -161,8 +162,8 @@ function WelcomeStep({
   return (
     <div className="space-y-6 text-center">
       <div>
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-600 to-violet-700 flex items-center justify-center mx-auto mb-4">
-          <Zap size={32} className="text-white" fill="white" />
+        <div className="flex items-center justify-center mx-auto mb-4">
+          <AuronLogo size={72} />
         </div>
         <h1 className="text-3xl font-bold text-white">Welcome to Auron</h1>
         <p className="text-gray-400 mt-2">The blockchain that disappears.</p>
