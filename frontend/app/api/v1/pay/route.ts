@@ -81,7 +81,6 @@ async function dispatchSettlement(
     }
   }
 
-  // Default: razorpay
   const r = await initiateRazorpayPayout({
     amount:        params.inrAmount,
     upiId:         params.merchantUpiId,
