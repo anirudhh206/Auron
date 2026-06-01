@@ -75,23 +75,35 @@ Correct response:
 Sending 0.5 SOL — confirming the details below.
 ${SEP}{"action":"transfer_sol","amount":0.5,"amount_usdc":null,"recipient":"7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAs7","note":null,"duration_days":null,"file_hash":null,"file_name":null,"description":null,"label":null,"confidence":0.98,"ambiguity":null}
 
+AMOUNT DISPLAY RULE — CRITICAL:
+- ₹500 is NOT "₹500 in USDC". ₹500 converts to approximately 5.95 USDC (at ~₹84/USDC).
+- ALWAYS show the USDC equivalent, never say "₹X in USDC". Say "~X USDC" or "(~X USDC)".
+- Example: ₹200 → "~2.38 USDC". ₹500 → "~5.95 USDC". ₹1000 → "~11.90 USDC".
+- Use ₹84 as the approximate rate for display only. Server computes the exact live rate.
+
 EXAMPLE 2 — .sol domain:
 User: "Send ₹500 to priya.sol"
 Correct response:
-Sending ₹500 (~6 USDC) to priya.sol — confirming below.
-${SEP}{"action":"transfer_usdc","amount":null,"amount_usdc":6.01,"recipient":"priya.sol","upi_id":null,"merchant_name":null,"inr_amount":500,"note":null,"duration_days":null,"file_hash":null,"file_name":null,"description":null,"label":null,"confidence":0.95,"ambiguity":null}
+Sending ₹500 (~5.95 USDC) to priya.sol — confirming below.
+${SEP}{"action":"transfer_usdc","amount":null,"amount_usdc":5.95,"recipient":"priya.sol","upi_id":null,"merchant_name":null,"inr_amount":500,"note":null,"duration_days":null,"file_hash":null,"file_name":null,"description":null,"label":null,"confidence":0.95,"ambiguity":null}
 
 EXAMPLE 3 — phone number:
 User: "Send ₹200 to 9876543210"
 Correct response:
-Sending ₹200 (~2.41 USDC) to 9876543210 — I'll look them up on Auron.
-${SEP}{"action":"transfer_usdc","amount":null,"amount_usdc":2.41,"recipient":"9876543210","upi_id":null,"merchant_name":null,"inr_amount":200,"note":null,"duration_days":null,"file_hash":null,"file_name":null,"description":null,"label":null,"confidence":0.95,"ambiguity":null}
+Sending ₹200 (~2.38 USDC) to 9876543210 — I'll look them up on Auron.
+${SEP}{"action":"transfer_usdc","amount":null,"amount_usdc":2.38,"recipient":"9876543210","upi_id":null,"merchant_name":null,"inr_amount":200,"note":null,"duration_days":null,"file_hash":null,"file_name":null,"description":null,"label":null,"confidence":0.95,"ambiguity":null}
 
 EXAMPLE 4 — name only (ask for identifier):
 User: "Send ₹500 to Priya"
 Correct response:
-I'll need Priya's Solana wallet address, .sol domain, or phone number to send — that's roughly 6 USDC.
-${SEP}{"action":"transfer_usdc","amount":null,"amount_usdc":6.01,"recipient":"Priya","note":null,"duration_days":null,"file_hash":null,"file_name":null,"description":null,"label":null,"confidence":0.65,"ambiguity":"What is Priya's Solana wallet address, .sol domain, or phone number?"}`;
+I'll need Priya's Solana wallet address, .sol domain, or phone number — that's ~5.95 USDC (₹500).
+${SEP}{"action":"transfer_usdc","amount":null,"amount_usdc":5.95,"recipient":"Priya","note":null,"duration_days":null,"file_hash":null,"file_name":null,"description":null,"label":null,"confidence":0.65,"ambiguity":"What is Priya's Solana wallet address, .sol domain, or phone number?"}
+
+EXAMPLE 5 — full name only, different amount:
+User: "Send ₹200 to Anirudh Vashisth"
+Correct response:
+I'll need Anirudh Vashisth's Solana wallet address, .sol domain, or phone number — that's ~2.38 USDC (₹200).
+${SEP}{"action":"transfer_usdc","amount":null,"amount_usdc":2.38,"recipient":"Anirudh Vashisth","note":null,"duration_days":null,"file_hash":null,"file_name":null,"description":null,"label":null,"confidence":0.65,"ambiguity":"What is Anirudh Vashisth's Solana wallet address, .sol domain, or phone number?"}`;
 
 // ─── Route handler ─────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
