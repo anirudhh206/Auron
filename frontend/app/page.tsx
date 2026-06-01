@@ -7,6 +7,7 @@ import {
   Zap, QrCode, ArrowRight, Check, ChevronDown,
   Send, Lock, FileText, ShieldCheck, Shield,
   Link2, Globe, MessageSquare, Sparkles, Twitter,
+  BarChart2, Database, RefreshCw, Route, ScanLine, ExternalLink,
 } from "lucide-react";
 import AuronLogo from "@/components/AuronLogo";
 
@@ -32,6 +33,7 @@ export default function Home() {
       <SpendingSection />
       <StatementSection />
       <SecuritySection />
+      <InfraSection />
       <CTASection onCTA={go} />
       <Footer />
     </div>
@@ -67,13 +69,18 @@ function Nav({ onCTA }: { readonly onCTA: () => void }) {
       </div>
 
       <div className="flex items-center gap-8">
-        {["Security", "How it works", "Docs"].map(l => (
-          <a key={l} href="#"
+        {[
+          { label: "How it works", href: "#features" },
+          { label: "Live Stats", href: "/stats" },
+          { label: "Security", href: "#security" },
+          { label: "Blinks", href: "/blink" },
+        ].map(({ label, href }) => (
+          <a key={label} href={href}
             className="text-xs font-medium transition-colors duration-200 hidden sm:block"
             style={{ color: "var(--text-muted)", letterSpacing: "0.02em" }}
             onMouseEnter={e => (e.currentTarget.style.color = "var(--auron-gold)")}
             onMouseLeave={e => (e.currentTarget.style.color = "var(--text-muted)")}>
-            {l}
+            {label}
           </a>
         ))}
         <motion.button onClick={onCTA}
@@ -279,7 +286,7 @@ function ProductWindow() {
               style={{ background: "rgba(255,255,255,0.035)", border: "1px solid rgba(255,255,255,0.055)" }}>
               <div className="w-1.5 h-1.5 rounded-full" style={{ background: "rgba(201,168,76,0.6)" }} />
               <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.22)", fontFamily: "var(--font-dm-sans)" }}>
-                auron.xyz/app
+                auron-mocha.vercel.app
               </span>
             </div>
           </div>
@@ -387,7 +394,7 @@ function ProductWindow() {
 // Proof strip — one thin elegant line
 // ─────────────────────────────────────────────────────────────
 function ProofStrip() {
-  const items = ["~400ms transaction finality", "< $0.001 network fee", "0 seed phrases", "300M+ QR codes supported", "Phantom · Backpack · Solflare"];
+  const items = ["~400ms transaction finality", "< $0.001 network fee", "Full audit trail on every payment", "0 seed phrases", "300M+ QR codes supported", "Phantom · Backpack · Solflare"];
   return (
     <div style={{ borderTop: "1px solid rgba(255,255,255,0.05)", borderBottom: "1px solid rgba(255,255,255,0.05)", padding: "18px 64px", background: "rgba(255,255,255,0.012)" }}>
       <div className="flex items-center justify-center flex-wrap gap-x-10 gap-y-2">
@@ -411,7 +418,7 @@ function Marquee() {
   return (
     <div style={{ padding: "28px 0", overflow: "hidden", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
       <div className="flex items-center gap-3 px-16 mb-3">
-        <span style={{ fontSize: "10px", letterSpacing: "0.1em", color: "var(--text-muted)", textTransform: "uppercase", whiteSpace: "nowrap" }}>Accepted at</span>
+        <span style={{ fontSize: "10px", letterSpacing: "0.1em", color: "var(--text-muted)", textTransform: "uppercase", whiteSpace: "nowrap" }}>Works with any QR from</span>
         <div style={{ height: "1px", flex: 1, background: "rgba(255,255,255,0.05)" }} />
       </div>
       <div className="animate-marquee flex gap-12" style={{ paddingLeft: "64px" }}>
@@ -434,7 +441,7 @@ function QRSection() {
   const inView = useInView(ref, { once: true, margin: "-100px" });
 
   return (
-    <section ref={ref} style={{ padding: "160px 0", background: "rgba(201,168,76,0.02)", borderTop: "1px solid rgba(201,168,76,0.06)" }}>
+    <section id="features" ref={ref} style={{ padding: "160px 0", background: "rgba(201,168,76,0.02)", borderTop: "1px solid rgba(201,168,76,0.06)" }}>
       <div className="max-w-[1440px] mx-auto grid lg:grid-cols-2 items-center" style={{ gap: "80px", padding: "0 64px" }}>
 
         {/* Left: QR visual */}
@@ -1019,7 +1026,7 @@ function SecuritySection() {
   ];
 
   return (
-    <section ref={ref} style={{ padding: "160px 64px", background: "#080810", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
+    <section id="security" ref={ref} style={{ padding: "160px 64px", background: "#080810", borderTop: "1px solid rgba(255,255,255,0.04)" }}>
       <div className="max-w-[1200px] mx-auto grid lg:grid-cols-[380px_1fr] gap-24 items-start">
 
         <motion.div initial={{ opacity: 0, y: 16 }} animate={inView ? { opacity: 1, y: 0 } : {}}
@@ -1068,6 +1075,151 @@ function SecuritySection() {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Infrastructure Section — shows depth behind the consumer UI
+// ─────────────────────────────────────────────────────────────
+function InfraSection() {
+  const ref    = useRef(null);
+  const inView = useInView(ref, { once: true, margin: "-80px" });
+
+  const components = [
+    {
+      icon: ScanLine,
+      title: "On-Chain Verification",
+      desc: "7-step hard gate on Solana RPC before any settlement executes — commitment, mint, amount, idempotency.",
+      status: "Live",
+      color: "#10b981",
+    },
+    {
+      icon: Database,
+      title: "Settlement State Machine",
+      desc: "7-state lifecycle: initiated → quoted → signed → verified → settling → completed → failed. Atomic transitions, every step recorded.",
+      status: "Live",
+      color: "#10b981",
+    },
+    {
+      icon: RefreshCw,
+      title: "Reconciliation Engine",
+      desc: "Async workers with optimistic locking. Stuck settlements are auto-detected and retried. Nothing falls through.",
+      status: "Live",
+      color: "#10b981",
+    },
+    {
+      icon: Route,
+      title: "Multi-Provider Routing",
+      desc: "OnMeta and Razorpay scored by fee and speed on every transaction. Best route selected automatically.",
+      status: "Live",
+      color: "#10b981",
+    },
+    {
+      icon: BarChart2,
+      title: "Append-Only Ledger",
+      desc: "Every payment, state transition, and settlement recorded with full audit trail. Publicly verifiable at /stats.",
+      status: "Live",
+      color: "#10b981",
+    },
+    {
+      icon: Zap,
+      title: "Claude AI Intent Layer",
+      desc: "Natural language → structured payment intent via Claude with prompt caching. 90% cost reduction at scale.",
+      status: "Live",
+      color: "#10b981",
+    },
+  ];
+
+  return (
+    <section ref={ref} style={{ padding: "160px 64px", background: "rgba(8,8,16,1)", borderTop: "1px solid rgba(201,168,76,0.06)" }}>
+      <div className="max-w-[1200px] mx-auto">
+
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }} animate={inView ? { opacity: 1, y: 0 } : {}}
+          transition={{ duration: 0.7 }}
+          className="mb-20"
+        >
+          <p style={{ fontSize: "11px", letterSpacing: "0.1em", color: "var(--auron-gold)", textTransform: "uppercase", fontWeight: 700, marginBottom: "16px" }}>
+            Settlement Infrastructure
+          </p>
+          <div className="flex items-end justify-between flex-wrap gap-8">
+            <h2 className="font-display font-black" style={{ fontSize: "clamp(2.2rem, 4vw, 3.6rem)", letterSpacing: "-0.03em", color: "#F0EEE8", lineHeight: 1.05, maxWidth: "640px" }}>
+              This is what runs underneath every payment.
+            </h2>
+            <a
+              href="/stats"
+              className="flex items-center gap-2 rounded-xl px-5 py-3 transition-all duration-200"
+              style={{ background: "rgba(201,168,76,0.07)", border: "1px solid rgba(201,168,76,0.2)", color: "#C9A84C", fontSize: "13px", fontWeight: 600, textDecoration: "none" }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "rgba(201,168,76,0.12)"; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "rgba(201,168,76,0.07)"; }}
+            >
+              <BarChart2 size={14} />
+              View live settlement data
+              <ExternalLink size={12} />
+            </a>
+          </div>
+        </motion.div>
+
+        {/* Grid */}
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          {components.map(({ icon: Icon, title, desc, status, color }, i) => (
+            <motion.div
+              key={title}
+              initial={{ opacity: 0, y: 24 }} animate={inView ? { opacity: 1, y: 0 } : {}}
+              transition={{ duration: 0.55, delay: i * 0.07 }}
+              className="rounded-2xl"
+              style={{
+                background: "rgba(255,255,255,0.018)",
+                border: "1px solid rgba(255,255,255,0.06)",
+                padding: "28px",
+              }}
+            >
+              {/* Icon + status row */}
+              <div className="flex items-center justify-between mb-5">
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                  style={{ background: "rgba(201,168,76,0.07)", border: "1px solid rgba(201,168,76,0.14)" }}>
+                  <Icon size={16} style={{ color: "#C9A84C" }} />
+                </div>
+                <div className="flex items-center gap-1.5 rounded-full px-2.5 py-1"
+                  style={{ background: `rgba(16,185,129,0.08)`, border: `1px solid rgba(16,185,129,0.18)` }}>
+                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} />
+                  <span style={{ fontSize: "10px", fontWeight: 700, color, letterSpacing: "0.04em" }}>{status}</span>
+                </div>
+              </div>
+              <p style={{ fontSize: "14px", fontWeight: 700, color: "#F0EEE8", marginBottom: "8px", letterSpacing: "-0.01em" }}>{title}</p>
+              <p style={{ fontSize: "12px", lineHeight: 1.65, color: "var(--text-secondary)" }}>{desc}</p>
+            </motion.div>
+          ))}
+        </div>
+
+        {/* Bottom strip — verifiable claim */}
+        <motion.div
+          initial={{ opacity: 0 }} animate={inView ? { opacity: 1 } : {}}
+          transition={{ duration: 0.6, delay: 0.5 }}
+          className="mt-12 flex items-center justify-between flex-wrap gap-4 rounded-2xl"
+          style={{ background: "rgba(201,168,76,0.04)", border: "1px solid rgba(201,168,76,0.12)", padding: "20px 28px" }}
+        >
+          <div className="flex items-center gap-3">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span style={{ fontSize: "13px", color: "var(--text-secondary)" }}>
+              All six components running in production. Every settlement verifiable on-chain and in the public ledger.
+            </span>
+          </div>
+          <div className="flex items-center gap-4">
+            <a href="/stats" style={{ fontSize: "12px", color: "#C9A84C", fontWeight: 600, textDecoration: "none" }}
+              className="flex items-center gap-1.5">
+              <BarChart2 size={12} /> /stats
+            </a>
+            <a href="/blink" style={{ fontSize: "12px", color: "#C9A84C", fontWeight: 600, textDecoration: "none" }}
+              className="flex items-center gap-1.5">
+              <Zap size={12} /> /blink
+            </a>
+          </div>
+        </motion.div>
+
+      </div>
+    </section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
 // CTA — full width, dramatic
 // ─────────────────────────────────────────────────────────────
 function CTASection({ onCTA }: { readonly onCTA: () => void }) {
@@ -1108,7 +1260,7 @@ function CTASection({ onCTA }: { readonly onCTA: () => void }) {
               className="btn-gold animate-btn-pulse flex items-center gap-3 rounded-2xl font-bold"
               style={{ padding: "18px 40px", fontSize: "17px", letterSpacing: "-0.01em" }}>
               <Zap size={20} fill="currentColor" />
-              Create your Auron account
+              Try the live demo
               <ArrowRight size={18} />
             </motion.button>
             <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>
@@ -1135,9 +1287,14 @@ function Footer() {
           <span className="font-display font-black text-sm gradient-text-gold" style={{ letterSpacing: "0.04em" }}>AURON</span>
         </div>
         <div className="flex items-center gap-8">
-          {["About","Security","Docs","Contact"].map(l => (
-            <a key={l} href="#" style={{ fontSize: "12px", color: "var(--text-muted)", textDecoration: "none", letterSpacing: "0.01em" }}
-              className="transition-colors duration-200 hover:text-gold">{l}</a>
+          {[
+            { label: "Security", href: "#security" },
+            { label: "Live Stats", href: "/stats" },
+            { label: "GitHub", href: "https://github.com/auron-solana" },
+            { label: "X", href: "https://x.com/auronsolana" },
+          ].map(({ label, href }) => (
+            <a key={label} href={href} target={href.startsWith("http") ? "_blank" : undefined} rel={href.startsWith("http") ? "noopener noreferrer" : undefined} style={{ fontSize: "12px", color: "var(--text-muted)", textDecoration: "none", letterSpacing: "0.01em" }}
+              className="transition-colors duration-200 hover:text-gold">{label}</a>
           ))}
         </div>
         <p style={{ fontSize: "11px", color: "var(--text-muted)", letterSpacing: "0.01em" }}>
