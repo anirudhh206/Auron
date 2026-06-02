@@ -31,7 +31,7 @@ const STEPS: { status: PaymentStatus; label: string; sublabel: string }[] = [
   { status: "awaiting_signature", label: "Sign",    sublabel: "Authorize in Phantom" },
   { status: "tx_pending",         label: "Chain",   sublabel: "Solana confirming" },
   { status: "tx_confirmed",       label: "On-chain",sublabel: "USDC transferred" },
-  { status: "offramp_initiated",  label: "Off-ramp",sublabel: "OnMeta converting" },
+  { status: "offramp_initiated",  label: "Off-ramp",sublabel: "Settling to UPI" },
   { status: "completed",          label: "Paid",    sublabel: "Merchant received ₹" },
 ];
 

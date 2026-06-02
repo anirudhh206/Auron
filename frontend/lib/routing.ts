@@ -194,8 +194,6 @@ function buildResult(
 
   return {
     path,
-    // Keep `provider` as alias so existing callers don't break
-    ...({ provider: path } as any),
     feePercent:           cfg.feePercent,
     estimatedTimeSeconds: cfg.avgTimeSeconds,
     estimatedTimeLabel:   formatDuration(cfg.avgTimeSeconds),

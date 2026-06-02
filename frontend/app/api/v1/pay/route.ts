@@ -17,8 +17,9 @@
 
 import { NextRequest, NextResponse }  from "next/server";
 import { verifyUsdcTransfer }          from "@/lib/verify-tx";
-import { initiateRazorpayPayout }      from "@/lib/razorpay";
 import { initiateOnMetaPayout }        from "@/lib/onmeta";
+// Razorpay fallback is handled by the settlement worker (PATH B — treasury + Razorpay X).
+// v1/pay only dispatches PATH A (OnMeta). Worker retries handle PATH B automatically.
 import {
   createTransaction,
   transitionTransaction,
@@ -57,38 +58,35 @@ async function dispatchSettlement(
     userId:        string;
   }
 ): Promise<DispatchResult> {
-  if (provider === "onmeta") {
-    try {
-      const r = await initiateOnMetaPayout({
-        usdcAmount:    params.usdcAmount,
-        merchantUpiId: params.merchantUpiId,
-        merchantName:  params.merchantName,
-        inrAmount:     params.inrAmount,
-        txSignature:   params.txSignature,
-        userId:        params.userId,
-      });
-      return {
-        success:   r.success,
-        payoutId:  r.payoutId,
-        utr:       r.utrNumber,
-        status:    r.status,
-        provider:  "onmeta",
-        retryable: true,
-      };
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "OnMeta error";
-      return { success: false, error: msg, retryable: true, provider: "onmeta" };
-    }
+  // PATH A — OnMeta: full USDC→INR offramp + UPI payout in one step.
+  // This is the only path dispatched synchronously here.
+  // PATH B (Treasury + Razorpay X) is handled by the async settlement worker
+  // which checks INR treasury balance and calls Razorpay X if OnMeta fails.
+  try {
+    const r = await initiateOnMetaPayout({
+      usdcAmount:    params.usdcAmount,
+      merchantUpiId: params.merchantUpiId,
+      merchantName:  params.merchantName,
+      inrAmount:     params.inrAmount,
+      txSignature:   params.txSignature,
+      userId:        params.userId,
+    });
+    return {
+      success:   r.success,
+      payoutId:  r.payoutId,
+      utr:       r.utrNumber,
+      status:    r.status,
+      provider:  "onmeta",
+      retryable: true,
+    };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "OnMeta error";
+    console.warn(
+      `[v1/pay] OnMeta dispatch failed paymentId=${params.paymentId}: ${msg}. ` +
+      `Settlement worker will retry via treasury path.`
+    );
+    return { success: false, error: msg, retryable: true, provider: "onmeta" };
   }
-
-  const r = await initiateRazorpayPayout({
-    amount:        params.inrAmount,
-    upiId:         params.merchantUpiId,
-    recipientName: params.merchantName,
-    referenceId:   params.idempotencyKey,
-    description:   `Auron ${params.paymentId.slice(0, 8)}`,
-  });
-  return { ...r, provider: "razorpay" };
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────

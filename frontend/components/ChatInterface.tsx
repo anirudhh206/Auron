@@ -943,7 +943,7 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
       updateRecord((r) => ({
         ...r,
         route: {
-          provider:         route.provider,
+          provider:         route.path,
           fallbackProvider: route.fallback ?? null,
           region,
           feePercent:       route.feePercent,
@@ -952,10 +952,10 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
         },
       }));
 
-      transition("offramp_initiated", `Payout via ${route.provider} · est. ${route.estimatedTimeLabel}`);
+      transition("offramp_initiated", `Payout via ${route.path} · est. ${route.estimatedTimeLabel}`);
 
       try {
-        transition("offramp_processing", `Processing ₹${inrAmount.toLocaleString("en-IN")} via ${route.provider}…`);
+        transition("offramp_processing", `Processing ₹${inrAmount.toLocaleString("en-IN")} via ${route.path}…`);
 
         // ── Call /v1/pay — ledger-backed settlement endpoint ──────────────
         const payRes = await fetch("/api/v1/pay", {
@@ -970,7 +970,7 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
             usdcAmount,
             txSignature:     signature,
             userId:          address,
-            provider:        route.provider,
+            provider:        route.path,
             fallbackProvider: route.fallback,
             quoteFxRate:     quoteFxRate,
             riskScore:       record.risk?.score,
