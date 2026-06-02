@@ -32,6 +32,7 @@ import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { useConnection } from "@solana/wallet-adapter-react";
 import { Send, Mic, MicOff, Sparkles, Lock, FileText, ShieldCheck, QrCode, ArrowRight, Link2, MessageSquare } from "lucide-react";
 import QRScanner, { type ParsedQRResult } from "./QRScanner";
+import QRAmountEntry from "./QRAmountEntry";
 import { shortAddr, NETWORK } from "@/lib/solana";
 import { runPreflightChecks } from "@/lib/preflight";
 import { useLiveRate } from "@/lib/useLiveRate";
@@ -105,6 +106,12 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
   const [isExecuting, setExecuting] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
   const [showQRScanner, setShowQRScanner] = useState(false);
+
+  // ── QR merchant context — set when static QR (no amount) is scanned ─────────
+  const [qrMerchantContext, setQrMerchantContext] = useState<{
+    merchantName: string;
+    upiId: string;
+  } | null>(null);
 
   // ── Payment pipeline state ─────────────────────────────────────────────────
   const [activePayment, setActivePayment] = useState<PaymentRecord | null>(null);
@@ -1131,27 +1138,83 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
     addMessage({ role: "assistant", content: "Cancelled. What would you like to do?" });
   }
 
-  // ── QR scan handler ────────────────────────────────────────────────────
+  // ── QR scan handler — two paths, Claude bypassed entirely ─────────────────
   function handleQRScan(parsed: ParsedQRResult) {
     setShowQRScanner(false);
-    let msg: string;
 
     if (parsed.type === "upi") {
       const { pa, pn, am } = parsed.data;
-      const merchant = pn || pa.split("@")[0];
-      msg = am
-        ? `Pay ₹${am} to ${merchant} via UPI ID ${pa}`
-        : `Pay to ${merchant} via UPI ID ${pa} — how much should I send?`;
-    } else {
-      const { recipient, label, amount, splToken } = parsed.data;
-      const name = label || shortAddr(recipient);
-      const token = splToken ? "USDC" : "SOL";
-      msg = amount
-        ? `Send ${amount} ${token} to ${name} (${recipient})`
-        : `Send ${token} to ${name} (${recipient}) — how much should I send?`;
+      const merchantName = pn || pa.split("@")[0];
+
+      if (am && am > 0) {
+        // ── PATH 1: Dynamic QR — amount embedded → direct to ConfirmCard ──
+        buildQRAction(merchantName, pa, am);
+      } else {
+        // ── PATH 2: Static QR — no amount → show amount entry modal ───────
+        setQrMerchantContext({ merchantName, upiId: pa });
+      }
+      return;
     }
 
+    // Solana Pay QR — still goes through chat (structured but token-type varies)
+    const { recipient, label, amount, splToken } = parsed.data;
+    const name  = label || shortAddr(recipient);
+    const token = splToken ? "USDC" : "SOL";
+    const msg   = amount
+      ? `Send ${amount} ${token} to ${name} (${recipient})`
+      : `Send ${token} to ${name} (${recipient}) — how much?`;
     setTimeout(() => handleSubmit(msg), 120);
+  }
+
+  // ── Build ParsedAction from QR data and set pendingTx (no Claude) ──────────
+  function buildQRAction(merchantName: string, upiId: string, inrAmount: number) {
+    const action: ParsedAction = {
+      action:           "upi_payment",
+      upi_id:           upiId,
+      merchant_name:    merchantName,
+      inr_amount:       inrAmount,
+      amount_usdc:      null,   // server computes authoritative amount at quote time
+      amount:           null,
+      recipient:        null,
+      split_recipients: null,
+      split_total_inr:  null,
+      query_period:     null,
+      query_category:   null,
+      pay_link_note:    null,
+      note:             null,
+      duration_days:    null,
+      file_hash:        null,
+      file_name:        null,
+      description:      null,
+      label:            null,
+      vault_id:         null,
+      confidence:       1.0,
+      ambiguity:        null,
+      detected_language: null,
+    };
+
+    const confirmText = `Pay ₹${inrAmount.toLocaleString("en-IN")} to ${merchantName} via UPI.`;
+
+    // Surface in chat so there's a record
+    addMessage({
+      role:    "user",
+      content: `📷 Pay ₹${inrAmount.toLocaleString("en-IN")} to ${merchantName} (${upiId})`,
+    });
+
+    setPendingTx({
+      action,
+      confirmText,
+      securityFlags:    [],
+      requiresSlowdown: false,
+    });
+  }
+
+  // ── QR amount confirmed (static QR path) ────────────────────────────────────
+  function handleQRAmountConfirm(inrAmount: number) {
+    if (!qrMerchantContext) return;
+    const { merchantName, upiId } = qrMerchantContext;
+    setQrMerchantContext(null);
+    buildQRAction(merchantName, upiId, inrAmount);
   }
 
   // Expose scanner + submit to parent (used by mobile Scan tab)
@@ -1521,6 +1584,18 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
           <QRScanner
             onScan={handleQRScan}
             onClose={() => setShowQRScanner(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* ── QR Amount Entry — static QR, no amount embedded ──────── */}
+      <AnimatePresence>
+        {qrMerchantContext && (
+          <QRAmountEntry
+            merchantName={qrMerchantContext.merchantName}
+            upiId={qrMerchantContext.upiId}
+            onConfirm={handleQRAmountConfirm}
+            onCancel={() => setQrMerchantContext(null)}
           />
         )}
       </AnimatePresence>
