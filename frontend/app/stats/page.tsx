@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { motion, AnimatePresence }           from "framer-motion";
 import {
   TrendingUp, CheckCircle, Clock,
-  Wallet, ArrowUpRight, RefreshCw, Shield,
+  Wallet, ArrowUpRight, RefreshCw, Shield, Landmark,
 } from "lucide-react";
 import AuronLogo from "@/components/AuronLogo";
 
@@ -35,8 +35,16 @@ interface RecentRow {
   is_demo:          boolean;
 }
 
+interface Treasury {
+  protocol_revenue_usdc: number;
+  spread_percent:        number;
+  wallet:                string;
+  description:           string;
+}
+
 interface StatsData {
   summary:    Summary;
+  treasury:   Treasury;
   recent:     RecentRow[];
   network:    string;
   updated_at: string;
@@ -320,6 +328,79 @@ export default function StatsPage() {
               />
             </div>
           </AnimatePresence>
+        )}
+
+        {/* ── Treasury card ───────────────────────────────────────────────── */}
+        {data?.treasury && (
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.22 }}
+            style={{
+              background:   "rgba(201,168,76,0.04)",
+              border:       "1px solid rgba(201,168,76,0.18)",
+              borderRadius: 16,
+              padding:      "20px 24px",
+              marginBottom: 32,
+              display:      "flex",
+              alignItems:   "center",
+              justifyContent: "space-between",
+              flexWrap:     "wrap" as const,
+              gap:          16,
+            }}
+          >
+            {/* Left — icon + label */}
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <div
+                style={{
+                  width: 40, height: 40, borderRadius: 12,
+                  background: "rgba(201,168,76,0.1)",
+                  border: "1px solid rgba(201,168,76,0.25)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <Landmark size={16} style={{ color: "#C9A84C" }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", color: "rgba(201,168,76,0.7)", textTransform: "uppercase" as const, marginBottom: 3 }}>
+                  Protocol Treasury
+                </div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "#C9A84C", letterSpacing: "-0.02em", lineHeight: 1 }}>
+                  {fmt(data.treasury.protocol_revenue_usdc, 4)} USDC
+                </div>
+                <div style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", marginTop: 4 }}>
+                  {data.treasury.spread_percent}% spread from {data.summary.completed} completed payments
+                </div>
+              </div>
+            </div>
+
+            {/* Right — wallet link */}
+            {data.treasury.wallet && (
+              <a
+                href={`https://solscan.io/account/${data.treasury.wallet}${network !== "mainnet-beta" ? `?cluster=${network}` : ""}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display:      "flex",
+                  alignItems:   "center",
+                  gap:          5,
+                  fontSize:     11,
+                  color:        "rgba(201,168,76,0.7)",
+                  textDecoration: "none",
+                  background:   "rgba(201,168,76,0.07)",
+                  border:       "1px solid rgba(201,168,76,0.2)",
+                  borderRadius: 8,
+                  padding:      "6px 12px",
+                  fontFamily:   "monospace",
+                  letterSpacing: "0.02em",
+                }}
+              >
+                {data.treasury.wallet.slice(0, 6)}…{data.treasury.wallet.slice(-4)}
+                <ArrowUpRight size={10} />
+              </a>
+            )}
+          </motion.div>
         )}
 
         {/* ── Recent settlements ──────────────────────────────────────────── */}

@@ -112,6 +112,14 @@ export async function GET(): Promise<NextResponse> {
   const realUsdc  = realRows.reduce((s, r) => s + Number(r.usdc_amount ?? 0), 0);
   const realInr   = realRows.reduce((s, r) => s + Number(r.inr_amount  ?? 0), 0);
 
+  // ── 5. Protocol revenue (treasury) ──────────────────────────────────────────
+  // Every completed payment leaves 0.85% spread in the treasury wallet.
+  // Protocol revenue = sum of all spread from completed payments.
+  // This is what has accumulated in the fee wallet on Solana.
+  const SPREAD_PERCENT       = 0.85;
+  const protocolRevenueUsdc  = parseFloat((totalUsdc * SPREAD_PERCENT / 100).toFixed(6));
+  const treasuryWallet       = process.env.NEXT_PUBLIC_FEE_WALLET ?? "";
+
   return NextResponse.json(
     {
       summary: {
@@ -121,10 +129,16 @@ export async function GET(): Promise<NextResponse> {
         success_rate:           successRate,
         total_usdc:             parseFloat(totalUsdc.toFixed(6)),
         total_inr:              parseFloat(totalInr.toFixed(2)),
-        verified_usdc:          parseFloat(realUsdc.toFixed(6)),  // on-chain verified only
+        verified_usdc:          parseFloat(realUsdc.toFixed(6)),
         verified_inr:           parseFloat(realInr.toFixed(2)),
         unique_wallets:         uniqueWallets,
         avg_settlement_seconds: avgSeconds,
+      },
+      treasury: {
+        protocol_revenue_usdc: protocolRevenueUsdc,
+        spread_percent:        SPREAD_PERCENT,
+        wallet:                treasuryWallet,
+        description:           "USDC accumulated from 0.85% spread on completed payments",
       },
       recent:     recentRows,
       network:    process.env.NEXT_PUBLIC_SOLANA_NETWORK ?? "devnet",
