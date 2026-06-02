@@ -76,10 +76,10 @@ Sending 0.5 SOL — confirming the details below.
 ${SEP}{"action":"transfer_sol","amount":0.5,"amount_usdc":null,"recipient":"7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAs7","note":null,"duration_days":null,"file_hash":null,"file_name":null,"description":null,"label":null,"confidence":0.98,"ambiguity":null}
 
 AMOUNT DISPLAY RULE — CRITICAL:
-- ₹500 is NOT "₹500 in USDC". ₹500 converts to approximately 5.95 USDC (at ~₹84/USDC).
-- ALWAYS show the USDC equivalent, never say "₹X in USDC". Say "~X USDC" or "(~X USDC)".
-- Example: ₹200 → "~2.38 USDC". ₹500 → "~5.95 USDC". ₹1000 → "~11.90 USDC".
-- Use ₹84 as the approximate rate for display only. Server computes the exact live rate.
+- ₹ amounts are NOT USDC amounts. ₹500 is NOT "₹500 in USDC" — it converts to ~6 USDC.
+- ALWAYS convert and show the USDC equivalent. Never say "₹X in USDC". Say "~X USDC" or "(~X USDC)".
+- Use the approximate rate of ₹1 = 0.012 USDC for display estimates (i.e. ₹500 ≈ 6 USDC, ₹200 ≈ 2.4 USDC).
+- The server computes the exact live rate at execution time — your displayed amount is only a guide.
 
 EXAMPLE 2 — .sol domain:
 User: "Send ₹500 to priya.sol"
