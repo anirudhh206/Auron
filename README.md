@@ -1,12 +1,33 @@
 # Auron
 
-**Programmable financial infrastructure. Currently settling on Solana.**
+**Programmable financial operating infrastructure for the stablecoin internet.**
 
-Auron is a coordination layer between payment intent and settlement execution. It handles FX quoting, on-chain verification, multi-provider routing, retry orchestration, and full audit trail persistence — the same primitives production fintech systems are built on, wired to a stablecoin settlement rail.
+Auron is the coordination layer between payment intent and settlement execution — the infrastructure primitive that lets users, merchants, businesses, and AI systems move value globally using stablecoins, without touching traditional banking rails.
 
 The blockchain is an implementation detail. The product is the infrastructure.
 
 **[Live Demo](https://auron-mocha.vercel.app) · [Pay Link](https://auron-mocha.vercel.app/pay/demo?amount=500&note=Lunch) · [Solana Blink](https://auron-mocha.vercel.app/api/actions/pay?to=demo&amount=500&currency=INR)**
+
+---
+
+## The Thesis
+
+Stablecoins are becoming the settlement layer for the internet.
+
+But moving stablecoin value into the real economy — into local currencies, merchant accounts, payroll systems, treasury workflows — requires infrastructure that doesn't exist yet as an open, composable, programmable layer.
+
+Traditional banking infrastructure settles slowly, fragments across geographies, depends on intermediaries, and is fundamentally incompatible with programmable financial logic. It cannot be integrated with AI systems. It cannot route conditionally. It cannot recover from failures automatically.
+
+Auron replaces that coordination layer with:
+
+- **Verified settlement** — on-chain proof before any payout executes
+- **Programmable routing** — intelligent provider selection, fallback, and recovery
+- **State-tracked lifecycles** — every payment through a deterministic, auditable state machine
+- **AI-native primitives** — financial actions that machines can read, execute, and compose
+
+The long-term goal is not to become another crypto payment app.
+
+The goal is to become **the programmable financial infrastructure layer that powers stablecoin movement between users, merchants, businesses, and AI systems globally.**
 
 ---
 
@@ -16,86 +37,180 @@ Every component below is in production code, not roadmap:
 
 | Component | Status | What it does |
 |---|---|---|
-| Payment intent layer | ✅ Live | Natural language → structured payment action via Claude |
-| FX quote engine | ✅ Live | Live CoinGecko rate, 0.85% spread, 60s locked quote |
-| On-chain verification | ✅ Live | 7-step USDC transfer verification before settlement |
-| Internal ledger | ✅ Live | Postgres-backed transaction + settlement + audit trail |
-| Settlement state machine | ✅ Live | 7-state lifecycle with atomic transitions |
-| Async settlement workers | ✅ Live | Queue-based execution with retry + reconciliation |
+| Payment intent layer | ✅ Live | Natural language → structured payment action via Claude AI |
+| FX quote engine | ✅ Live | Live CoinGecko rate, 0.85% spread, 60s locked quote with slippage guard |
+| On-chain verification | ✅ Live | 7-step USDC transfer verification — hard gate before any settlement |
+| Internal ledger | ✅ Live | Postgres-backed transaction + settlement + append-only audit trail |
+| Settlement state machine | ✅ Live | 9-state lifecycle with atomic, immutable transitions |
+| Failure & recovery system | ✅ Live | Auto-classification, provider switching, exponential backoff, auto-refund |
+| Async settlement workers | ✅ Live | Queue-based execution with optimistic locking and reconciliation |
 | Multi-provider routing | ✅ Live | OnMeta (primary) + Razorpay (fallback), scored routing engine |
+| Liquidity model | ✅ Live | Treasury tracking, in-flight USDC, pre-payment gates, reserve alerts |
+| Refund engine | ✅ Live | Automatic USDC return on terminal failures — on-chain, verifiable |
+| Receipt system | ✅ Live | SHA-256 canonical receipts with on-chain hash + full audit trail |
 | Anchor vault program | ✅ Devnet | Time-locked USDC custody, PDA-based, program-enforced |
-| Solana Blinks | ✅ Live | Every pay link is a natively composable action |
+| Solana Blinks | ✅ Live | Every pay link is a natively composable on-chain action |
 | KYC system | ✅ Live | Middleware-gated, Supabase-tracked, provider-agnostic |
-| 6-layer security | ✅ Live | Risk scoring, spend ceiling, urgency detection, closed signing |
+| 6-layer security | ✅ Live | Risk scoring, spend ceiling, scam detection, closed signing |
 
 ---
 
-## The Coordination Problem
+## The Infrastructure Gap
 
 India's UPI network processes ₹20 trillion per month across 350 million users. It is the most active real-time payment system on earth.
 
-It has no programmable layer. No treasury primitives. No cross-border settlement logic. No lifecycle management above the transaction level.
+Stablecoins already settle trillions of dollars in annual volume globally.
 
-Every attempt to build on top of it produces the same thing: a wrapper around a single rail that breaks at the coordination boundary.
+Between them: nothing. No programmable settlement layer. No treasury primitives. No cross-border coordination logic. No lifecycle management above the transaction level.
 
-The gap is not in the rails. It is in the layer that sits above them — the layer that manages state, routes between providers, tracks settlement, and recovers from failure. That layer does not exist today as open, composable infrastructure.
+Every attempt to bridge them produces the same result: a wrapper around a single rail that breaks at the coordination boundary.
+
+The gap is not in the rails. It is in the layer above them — the layer that manages state, routes between providers, verifies on-chain, tracks settlement, and recovers from failure automatically.
+
+**That layer is Auron.**
 
 ---
 
 ## Architecture
 
-```mermaid
-graph TD
-    A[User — natural language intent] --> B[Intent Layer]
-    B --> C{Claude AI}
-    C --> D[Structured action + risk score]
-    D --> E[Quote Engine]
-    E --> F[Live FX rate · locked quote · 60s TTL]
-    F --> G[Preflight Checks]
-    G --> H[Wallet Signing — Phantom]
-    H --> I[On-chain Verification]
-    I -->|Hard gate| J[Ledger — initiated → verified]
-    J --> K[Routing Engine]
-    K --> L{Provider Selection}
-    L --> M[OnMeta — primary]
-    L --> N[Razorpay — fallback]
-    M --> O[Settlement Worker]
-    N --> O
-    O --> P[Ledger — settling → completed]
-    O --> Q[Reconciliation Worker]
-    Q --> P
-
-    style I fill:#1a1a2e,color:#fff
-    style J fill:#16213e,color:#fff
-    style O fill:#0f3460,color:#fff
-    style Q fill:#0f3460,color:#fff
+```
+User (natural language intent)
+        ↓
+  Intent Layer — Claude AI parses intent → structured action
+        ↓
+  Quote Engine — live FX rate, 0.85% spread, 60s locked quote
+        ↓
+  Preflight — risk score, spend ceiling, scam detection, liquidity gate
+        ↓
+  Wallet Signing — Phantom (desktop + mobile deep link)
+        ↓
+  On-Chain Verification — 7-step Solana RPC check (HARD GATE)
+        ↓
+  Internal Ledger — Postgres: transactions + settlements + status_history
+        ↓
+  Routing Engine — scored provider selection (fee 60%, speed 40%)
+        ↓
+    ┌─────────────────────────────────┐
+    │  OnMeta (primary)               │  USDC → INR → UPI
+    │  Razorpay X (fallback)          │  INR float → UPI
+    │  Manual (last resort)           │  operator queue
+    └─────────────────────────────────┘
+        ↓
+  Settlement Worker — async, optimistic lock, retry + recovery
+        ↓
+  Reconciliation Worker — detects stuck payments, fixes mismatches
+        ↓
+  Merchant receives INR via UPI
 ```
 
 ---
 
 ## Settlement Lifecycle
 
-Every payment moves through a deterministic, persisted state machine. No payment proceeds without passing through each gate.
+Every payment moves through a deterministic, persisted state machine. No payment skips a state. No settlement fires on an unverified transaction.
 
-```mermaid
-stateDiagram-v2
-    [*] --> initiated : Payment intent created
-    initiated --> quoted : FX rate locked
-    quoted --> signed : User signs on-chain transfer
-    signed --> verified : Server confirms on-chain transfer
-    verified --> settling : Settlement record created
-    settling --> completed : Provider confirms payout
-    settling --> failed : Max retries exceeded
+```
+[initiated]
+    ↓  FX rate locked
+[quoted]
+    ↓  User signs on-chain transfer
+[signed]
+    ↓  Server confirms on-chain transfer (7-step hard gate)
+[verified]
+    ↓  Settlement record created, provider selected
+[settling]
+    ↓  Provider confirms payout
+[completed]  ← terminal ✓
 
-    verified --> failed : On-chain verification fails
-    completed --> [*]
-    failed --> [*]
+[verified/settling] → [failed]       ← terminal ✗  (triggers auto-refund if eligible)
+[failed]            → [refund_pending] → [refunded]  ← terminal ✓
 ```
 
-**Every transition is:**
-- Atomic — both `transactions` and `status_history` update in the same operation
-- Immutable — status history rows are never updated or deleted
-- Recoverable — failed settlements re-enter the worker queue automatically
+Every transition is:
+- **Atomic** — both `transactions` and `status_history` update in the same operation
+- **Immutable** — history rows are never updated or deleted
+- **Recoverable** — failure classification determines retry, provider switch, or auto-refund automatically
+
+---
+
+## Failure System
+
+When a settlement fails, the failure system answers three questions automatically:
+
+1. **What category is this?** — 14 pattern-matched failure categories (invalid UPI, timeout, rate limit, 5xx, FX expiry, slippage, etc.)
+2. **Can we recover?** — retry with backoff, switch to fallback provider, queue for manual review
+3. **Should we refund?** — auto-triggers USDC return to user's wallet on terminal failures
+
+```
+Provider failure
+    ↓
+classifyFailure(error) → category + severity + retryable + switchProvider + autoRefund
+    ↓
+decideRecovery(classification, retryCount, provider)
+    ↓
+  "retry"          → exponential backoff (5s → 15s → 45s)
+  "switch_provider"→ OnMeta → Razorpay → Manual
+  "refund"         → executeRefund() → USDC back on-chain → receipted
+  "manual_review"  → flagged for ops team
+```
+
+Additional guards:
+- **Price guard** — if FX rate moves >150bps between quote and settlement, auto-refund
+- **Quote expiry** — server-side TTL check before every settlement attempt
+- **Stuck payment detector** — `processing` >10min reset, `settling` >30min flagged
+
+---
+
+## Liquidity Model
+
+```
+treasury_balance (on-chain USDC)
+    - in_flight_usdc  (pending + settling payments)
+    = available_usdc
+
+Pre-payment gate checks:
+  ✓ amount >= 0.5 USDC (minimum)
+  ✓ amount <= 5,000 USDC (per-transaction cap)
+  ✓ treasury_balance >= MIN_RESERVE (50 USDC) + amount
+  ✓ in_flight + amount <= MAX_IN_FLIGHT (10,000 USDC)
+```
+
+Reserve alerts fire at 2x minimum. Critical alert at 1x minimum. Both logged and surfaced via `/api/stats`.
+
+---
+
+## Replayable Receipts
+
+Every completed payment produces a cryptographically verifiable receipt:
+
+```json
+{
+  "payment_id": "pay_8x92kL",
+  "internal_id": "uuid",
+  "on_chain_hash": "5KtPxQ...wR2",
+  "on_chain_timestamp": "2026-06-04T10:42:18Z",
+  "usdc_amount": 5.410000,
+  "inr_amount": 450.00,
+  "fx_rate": 83.18,
+  "merchant_upi_id": "merchant@paytm",
+  "utr_number": "YESB178011620946032853",
+  "receipt_hash": "sha256:a3f9...",
+  "audit_trail": [
+    { "from": null,        "to": "initiated", "at": "T+0s" },
+    { "from": "initiated", "to": "verified",  "at": "T+2.1s" },
+    { "from": "verified",  "to": "settling",  "at": "T+2.4s" },
+    { "from": "settling",  "to": "completed", "at": "T+14.2s" }
+  ],
+  "verify": {
+    "canonical": "payment_id|on_chain_hash|usdc|inr|upi_id|wallet|confirmed_at",
+    "explorer": "https://solscan.io/tx/5KtPxQ...wR2"
+  }
+}
+```
+
+The `receipt_hash` is a SHA-256 of canonical fields. Anyone can recompute it independently and verify Auron's records have not been altered.
+
+**GET** `/api/receipt/:paymentId`
 
 ---
 
@@ -103,17 +218,48 @@ stateDiagram-v2
 
 Auron maintains a financial ledger independent of blockchain state — the same pattern Stripe, Razorpay, and Wise use to manage payment state across unreliable external systems.
 
-**Three-table schema (PostgreSQL via Supabase):**
-
-```
+```sql
 transactions     — single source of truth for every payment intent
-settlements      — one row per attempt; carries provider payout ID and UTR
+settlements      — one row per attempt; provider payout ID, UTR, failure stage
 status_history   — append-only audit trail; every transition with timestamp + reason
 ```
 
 Row-level security is enabled on all tables. All writes go through the service role key on server-side routes — the client never touches the ledger directly.
 
-The ledger exists because blockchain finality is not the same as settlement finality. A confirmed Solana transaction does not mean a merchant received INR. The ledger tracks the full chain of custody from user intent to bank credit.
+Blockchain finality ≠ settlement finality. A confirmed Solana transaction does not mean a merchant received INR. The ledger tracks the full chain of custody.
+
+---
+
+## Developer API
+
+```typescript
+// Initiate a settlement
+const result = await auron.settle({
+  amount_usdc:     5.41,
+  inr_amount:      450,
+  recipient_upi:   "merchant@paytm",
+  tx_signature:    "5KtPxQ...wR2",
+  idempotency_key: "order_84729",
+});
+
+// Result
+{
+  payment_id:    "pay_8x92kL",
+  status:        "completed",
+  utr:           "YESB178011620946032853",
+  settled_at:    "2026-06-04T10:42:18Z",
+  inr_delivered: 450,
+  provider:      "onmeta",
+  receipt_hash:  "sha256:a3f9..."
+}
+```
+
+**Built in from day one:**
+- `idempotency_key` — safe to retry, duplicate requests return cached results
+- `settlement.completed` / `settlement.failed` / `settlement.updated` webhook events
+- Full audit trail at `/api/receipt/:paymentId`
+- Auto-recovery — stuck settlements detected, retried, and classified automatically
+- TypeScript SDK — `npm install @auron/sdk`
 
 ---
 
@@ -128,62 +274,10 @@ Before settlement, the server independently:
 3. Rejects transactions with any error field set
 4. Scans **all instructions including CPI inner instructions** — required because Phantom routes USDC transfers through the Associated Token Program, making the transfer invisible to top-level instruction inspection
 5. Verifies USDC mint address against expected devnet/mainnet mint
-6. Validates transfer amount within 1% tolerance (handles FX rounding)
-7. Checks idempotency — already-settled signatures are rejected
+6. Validates transfer amount within 2% tolerance (handles FX rounding)
+7. Checks idempotency — already-settled signatures are rejected at the database level via a partial unique index
 
 If any check fails, the ledger is marked `failed` and the client receives a hard error. No settlement proceeds.
-
----
-
-## Queue-Based Settlement Orchestration
-
-Settlement execution is decoupled from the payment request. The API endpoint creates the ledger record and returns immediately. Workers handle execution.
-
-**Two worker routes, scheduled via Vercel Cron:**
-
-```
-/api/workers/settlement  — claims pending settlements, executes payout calls, updates ledger
-/api/workers/reconcile   — polls in-flight settlements against provider status, fixes discrepancies
-```
-
-**Claim pattern uses optimistic locking:**
-
-```sql
-UPDATE settlements
-SET status = 'processing'
-WHERE id = $settlementId
-  AND status = 'pending'
-  AND retry_count < 3
-```
-
-This prevents double-processing across concurrent invocations without requiring distributed locks or external coordination.
-
-**Retry classification:**
-- Retryable: timeouts, network failures → exponential backoff, re-queued
-- Non-retryable: invalid UPI ID, KYC rejection → terminated immediately, no retry
-
-**Reconciliation worker additionally handles:**
-- Settlements stuck in `processing` beyond 10 minutes → reset to `pending`
-- Provider-confirmed payouts not yet reflected in ledger → fixed automatically
-- Critical mismatch (Auron says completed, provider says failed) → flagged for manual review
-
----
-
-## Routing Engine
-
-Provider selection is scored, not hardcoded. Adding a new settlement provider requires one row in a capability matrix.
-
-```
-Provider    Region    Fee      Speed     Status
-────────────────────────────────────────────────
-OnMeta      IN        0.5%     ~20s      Live
-Razorpay    IN        0.99%    ~15s      Live
-Transak     Global    1.5%     ~60s      Pending KYB
-Stripe      US/EU     2.9%     next-day  Pending
-Manual      Global    0%       ~1h       Always available
-```
-
-Scoring weights fee 60%, speed 40%. The routing engine selects the best available provider for each payment's region and amount. Fallback is automatic.
 
 ---
 
@@ -200,161 +294,147 @@ pub fn lock_savings(ctx, amount: u64, unlock_timestamp: i64, label: String) -> R
 pub fn unlock_savings(ctx) -> Result<()>
 ```
 
-[View on Solscan (devnet)](https://solscan.io/account/B5DwqnCoDrY8ezfGaZfpAnvZ4FwCtPNHk6vT5nRgFENg?cluster=devnet)
-
 ---
 
 ## Solana Blinks
 
-Full implementation of the [Solana Actions spec](https://docs.dialect.to/documentation/solana-actions). Every pay link is simultaneously a human-readable payment page and a composable action operable inside X/Twitter, Dialect, and Phantom without leaving the host surface.
+Full implementation of the Solana Actions spec. Every pay link is simultaneously a human-readable payment page and a composable action operable inside X/Twitter, Dialect, and Phantom without leaving the host surface.
 
 ```
 GET  /api/actions/pay  →  action metadata + label
 POST /api/actions/pay  →  serialized transaction for wallet signing
 ```
 
+Paste any Auron pay link into a tweet — it becomes an executable payment, natively, with no redirect.
+
 ---
 
 ## Why Solana
 
-Sub-second finality and near-zero fees make the on-chain leg of the payment flow invisible to users. A USDC transfer from user to treasury confirms in ~400ms at a cost of ~$0.00025 — fast enough that waiting for it is not a UX problem.
+Sub-second finality and near-zero fees make the on-chain leg of the payment flow invisible to users. A USDC transfer confirms in ~400ms at a cost of ~$0.00025 — fast enough that waiting for it is not a UX problem.
 
-The composability story (Blinks, Actions) creates distribution channels that don't exist on slower chains. A pay link shared in a tweet becomes an executable payment without a redirect.
+The composability story (Blinks, Actions) creates distribution primitives that don't exist on slower chains.
 
-The architecture is designed for multi-rail expansion. Solana is the current settlement rail. It is not the product.
-
----
-
-## Intent Layer
-
-Users describe what they want in plain language. The system resolves it into a structured, verifiable action.
-
-```
-"send ₹500 to Priya"
-→ { action: "upi_payment", inr_amount: 500, recipient: "priya@upi", usdc_amount: 5.97 }
-
-"lock ₹2000 for 3 months"
-→ { action: "lock_savings", usdc_amount: 23.88, duration_days: 90 }
-
-"scan and pay"
-→ QR scanner → UPI intent → full settlement flow
-```
-
-Powered by Claude Sonnet with prompt caching (90% cost reduction on repeated system prompt calls).
-
-**Security gates before every execution:**
-
-| Layer | What it does |
-|---|---|
-| Intent mirror | Explicit confirmation before any execution |
-| Scam detector | Urgency keywords trigger mandatory 60s cooldown |
-| Spend ceiling | Per-transaction limit, user-configurable |
-| Risk scoring | New recipients, unusual amounts, velocity all scored 0–100 |
-| Closed signing | Wallet signs only Auron-originated requests |
-| Daily cap | Hard ceiling enforced server-side |
-
----
-
-## Demo
-
-**2-minute flow:**
-
-1. Open [auron-mocha.vercel.app](https://auron-mocha.vercel.app)
-2. Connect Phantom (devnet)
-3. Type: *"send ₹500 to demo@upi"*
-4. Confirm the quote — FX rate, USDC amount, and merchant locked
-5. Approve in Phantom — USDC transfers to Auron treasury on-chain
-6. Server verifies the transfer, creates settlement record
-7. Payout routes to merchant UPI via Razorpay
-8. Receipt with UTR number
-
-**Or use a pay link directly:**
-```
-https://auron-mocha.vercel.app/pay/demo?amount=500&note=Lunch
-```
-
-**Or trigger via Blink (paste in X/Twitter or Dialect):**
-```
-https://auron-mocha.vercel.app/api/actions/pay?to=demo&amount=500&currency=INR
-```
-
----
-
-## Local Setup
-
-```bash
-cd frontend
-npm install
-cp .env.example .env.local
-npm run dev
-```
-
-**Required environment variables:**
-```
-ANTHROPIC_API_KEY              — Claude intent parsing
-NEXT_PUBLIC_SUPABASE_URL       — Supabase project URL
-NEXT_PUBLIC_SUPABASE_ANON_KEY  — Supabase anon key
-SUPABASE_SERVICE_ROLE_KEY      — Service role key (server-side only)
-```
-
-**Database (run `frontend/lib/db/schema.sql` in Supabase SQL Editor):**
-Creates: `transactions`, `settlements`, `status_history`, `users`, `kyc_submissions`, `contacts`, `intent_log`
-
-**Optional:**
-```
-ONMETA_API_KEY         — leave unset for demo mode (simulated payout)
-RAZORPAY_KEY_ID        — Razorpay payout credentials
-RAZORPAY_KEY_SECRET
-SOLANA_RPC_URL         — defaults to public devnet RPC
-DEMO_SETTLEMENT=true   — skip real payout, TX verification still runs
-```
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Framework | Next.js 14 App Router, TypeScript |
-| Intent Engine | Claude Sonnet — structured parsing, prompt caching |
-| Settlement Rail | Solana — USDC SPL transfers, Anchor vault program |
-| Ledger | Supabase PostgreSQL — transactions, settlements, audit trail |
-| Auth | Supabase — Google OAuth + phone OTP |
-| Wallet | Phantom — desktop + mobile deep link |
-| Offramp (primary) | OnMeta — USDC → INR via UPI |
-| Offramp (fallback) | Razorpay — UPI payouts |
-| Rate Limiting | Vercel KV |
-| Security | argon2id PIN, CSP headers, RLS on all DB tables |
-| Distribution | Solana Blinks, shareable pay links, PWA |
+**The architecture is designed for multi-rail expansion. Solana is the current settlement rail. It is not the product.**
 
 ---
 
 ## Roadmap
 
-**Phase 1 — Settlement Infrastructure (current)**
-- Programmable payment intent layer
-- Internal ledger with full lifecycle management
-- On-chain verification engine
-- Queue-based settlement orchestration
-- Time-locked treasury vault
+### Phase 1 — Settlement Infrastructure *(current)*
 
-**Phase 2 — Treasury Primitives**
-- Merchant settlement APIs
-- Programmable payment splits and escrow
-- Agent-authorized recurring settlement
-- Compliance and reconciliation tooling
-- Expanded liquidity provider routing
+The foundation. Every payment primitive required for production-grade stablecoin settlement.
 
-**Phase 3 — Sovereign Financial Infrastructure**
-- Multi-rail settlement (SWIFT, Stellar, Lightning)
-- Institutional treasury APIs
-- Intelligent liquidity routing across rails
-- Cross-border settlement coordination
-- Autonomous treasury orchestration agents
+- ✅ Programmable payment intent layer (Claude AI)
+- ✅ Internal ledger with full lifecycle management
+- ✅ 7-step on-chain verification engine
+- ✅ Queue-based settlement orchestration
+- ✅ Failure classification + auto-recovery system
+- ✅ Price guard + quote expiry protection
+- ✅ Liquidity model with pre-payment gates
+- ✅ Auto-refund engine (on-chain USDC return)
+- ✅ Replayable receipts with SHA-256 integrity hash
+- ✅ Time-locked treasury vault (Anchor program)
+- ✅ Solana Blinks + composable pay links
+- ⏳ OnMeta KYB approval (3–7 days)
+- ⏳ Mainnet deployment
 
 ---
 
-## Unit Economics (Live Mode)
+### Phase 2 — Treasury Primitives
+
+Turning Auron from a payment processor into a treasury coordination layer.
+
+- Merchant settlement APIs — batch payouts, scheduled transfers
+- Programmable payment splits and escrow
+- Developer SDK — `npm install @auron/sdk` with full TypeScript types
+- Webhooks + event streaming
+- Agent-authorized recurring settlement
+- Compliance and reconciliation tooling
+- Multi-currency support (USDT, USDC, EURC)
+- Expanded liquidity provider routing (Transak, Stripe, manual network)
+- INR float treasury management
+
+---
+
+### Phase 3 — AI-Native Financial Orchestration
+
+The layer that makes Auron infrastructure-grade.
+
+- AI agent payment APIs — machine-readable settlement primitives
+- Autonomous treasury balancing — AI-managed liquidity routing
+- Conditional payment workflows — programmable escrow, milestone releases
+- Agentic commerce infrastructure — AI systems that can hold, route, and settle value
+- Cross-network abstraction — Solana, Ethereum, Base, Starknet behind one interface
+- Programmable collateral and yield — treasury-backed financial products
+- Sub-account architecture — businesses run isolated treasury environments on Auron rails
+
+---
+
+### Phase 4 — Sovereign Infrastructure
+
+Where Auron becomes an independent financial coordination network.
+
+- Multi-rail settlement — SWIFT, Stellar, Lightning, ACH, SEPA
+- Institutional treasury APIs
+- Intelligent liquidity routing across rails and networks
+- RWA coordination — invoice liquidity, merchant receivables, short-term credit
+- B2B settlement network — exchanges, payroll, gaming platforms, SaaS billing
+- Regulatory framework — VDA reporting, FEMA compliance, licensed operations
+- Global expansion — Southeast Asia, MENA, LATAM corridors
+
+---
+
+## Vision
+
+Most people still think about finance as humans manually transacting.
+
+The future is different.
+
+AI assistants will purchase services. Autonomous agents will manage subscriptions, balance treasuries, and settle supplier invoices. Software systems will execute financial actions the way they execute API calls today — instantly, programmatically, without human intervention.
+
+Those systems need financial coordination infrastructure that is:
+
+- **Programmable** — not just executable, but composable and conditional
+- **Verifiable** — every action on-chain and auditable
+- **Intelligent** — routing, recovery, and optimization happen automatically
+- **Invisible** — developers and users should not think about blockchain
+
+Auron is not trying to become the cheapest way to send a payment.
+
+Auron is building **the operating layer for programmable money** — the infrastructure that will coordinate stablecoin movement between users, merchants, businesses, and AI systems when the programmable finance era arrives.
+
+> The strongest infrastructure companies are invisible. Users should not think: "I'm using blockchain." They should think: "It just works."
+
+---
+
+## Growth Model
+
+### Stage 1 — Crypto Community (0 → 1,000 users)
+
+The people who already hold USDC and want to spend it are already organized — in Telegram groups, Solana India Discord, r/IndiaCrypto. A 30-second video of scan → confirm → merchant paid in INR is viral content in those communities.
+
+Cost: ₹0. Timeline: 1 week post-mainnet.
+
+### Stage 2 — College Campuses (1,000 → 10,000 users)
+
+Engineering college crypto clubs across India. Students who hold crypto but can't spend it. One live demo at a tech fest — filmed and posted — spreads across every engineering college WhatsApp group in 48 hours.
+
+### Stage 3 — Referral Loop (10,000 → 100,000 users)
+
+Invite a friend → both get 3 free premium payments. Every crypto holder knows other crypto holders. The network is tight.
+
+### Stage 4 — Merchant Flywheel (100,000 → 1,000,000 users)
+
+Once merchants display Auron QRs, the merchant IS the distribution. Every shop displaying a QR passively acquires new users. This is how PhonePe scaled. It is automatic.
+
+### Stage 5 — B2B API (1M+ users)
+
+Transaction volume becomes the credibility needed to approach exchanges, payroll platforms, and gaming companies. One B2B partnership adds 50,000 users overnight.
+
+---
+
+## Unit Economics
 
 At 10,000 transactions/day averaging ₹400:
 
@@ -364,8 +444,129 @@ At 10,000 transactions/day averaging ₹400:
 | OnMeta fees (~0.5%) | −₹20,000 | −₹7.3M |
 | **Net** | **₹14,000** | **₹5.1M (~$61K USD)** |
 
-Jupiter swap fees (0.3%) add on top for USDC→SOL flows.
+Phase 2 adds: developer API licensing, treasury management fees, and settlement volume from B2B partnerships.
 
 ---
 
-*Auron is a programmable financial system that currently settles on Solana.*
+## Local Setup
+
+```bash
+git clone https://github.com/your-username/auron
+cd auron/apps/web
+npm install
+cp .env.example .env.local
+npm run dev
+```
+
+**Required environment variables:**
+
+```bash
+ANTHROPIC_API_KEY              # Claude intent parsing
+NEXT_PUBLIC_SUPABASE_URL       # Supabase project URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY  # Supabase anon key
+SUPABASE_SERVICE_ROLE_KEY      # Service role key (server-side only)
+```
+
+**Database — run in Supabase SQL Editor:**
+
+```bash
+# Initial schema
+apps/web/lib/db/schema.sql
+
+# Migration 001 (receipt hash + refund columns)
+apps/web/lib/db/migration_001_receipt_refund.sql
+```
+
+**Optional:**
+
+```bash
+ONMETA_API_KEY          # Leave unset for demo mode (simulated payout)
+RAZORPAY_KEY_ID         # Razorpay payout credentials
+RAZORPAY_KEY_SECRET
+RAZORPAY_ACCOUNT_ID
+TREASURY_KEYPAIR_BASE58 # Treasury wallet private key (for auto-refunds)
+SOLANA_RPC_URL          # Defaults to public devnet RPC
+DEMO_SETTLEMENT=true    # Skip real payout, TX verification still runs
+CRON_SECRET             # Protects /api/workers/* in production
+```
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Framework | Next.js 15 App Router, TypeScript |
+| Intent Engine | Claude Sonnet — structured parsing, prompt caching |
+| Settlement Rail | Solana — USDC SPL transfers, Anchor vault program |
+| Ledger | Supabase PostgreSQL — transactions, settlements, audit trail |
+| Auth | Supabase — Google OAuth + phone OTP |
+| Wallet | Phantom — desktop + mobile deep link |
+| Offramp (primary) | OnMeta — USDC → INR via UPI |
+| Offramp (fallback) | Razorpay X — UPI payouts from INR float |
+| Rate Limiting | Vercel KV |
+| Security | argon2id PIN, CSP headers, RLS on all DB tables |
+| Mobile | Capacitor — Android app |
+| Distribution | Solana Blinks, shareable pay links, PWA |
+| Monitoring | Sentry, Vercel Analytics |
+
+---
+
+## Repository Structure
+
+```
+auron/
+├── apps/
+│   └── web/                    # Next.js 15 application
+│       ├── app/
+│       │   ├── api/
+│       │   │   ├── parse-intent/   # Claude intent parsing
+│       │   │   ├── quote/          # FX quote engine
+│       │   │   ├── payment/        # Payment initiation
+│       │   │   ├── offramp/        # Settlement execution
+│       │   │   ├── receipt/        # Replayable receipts
+│       │   │   ├── workers/
+│       │   │   │   ├── settlement/ # Async settlement worker
+│       │   │   │   └── reconcile/  # Reconciliation worker
+│       │   │   └── webhooks/       # Provider webhook handlers
+│       │   └── [pages]/
+│       ├── components/             # UI components
+│       └── lib/
+│           ├── failure.ts          # Failure classification + recovery
+│           ├── refund.ts           # USDC refund executor
+│           ├── liquidity.ts        # Treasury liquidity model
+│           ├── payment-state.ts    # State machine + receipt hash
+│           ├── verify-tx.ts        # On-chain verification
+│           ├── routing.ts          # Provider routing engine
+│           ├── retry.ts            # Exponential backoff + jitter
+│           ├── quote.ts            # FX quote engine
+│           ├── onmeta.ts           # OnMeta integration
+│           ├── razorpay.ts         # Razorpay integration
+│           ├── treasury.ts         # Treasury balance tracking
+│           └── db/
+│               ├── ledger.ts       # Ledger data access layer
+│               ├── schema.sql      # Initial schema
+│               ├── migration_001_receipt_refund.sql
+│               └── types.ts        # TypeScript types
+├── programs/
+│   └── savings-vault/              # Anchor vault program (Solana)
+└── packages/
+    └── sdk/                        # @auron/sdk (in progress)
+```
+
+---
+
+## Current Stage
+
+> Early-stage financial infrastructure with real production architecture.
+
+Not yet: institutional-grade, regulated, enterprise-ready.
+
+Already beyond: hackathon demos, frontend-only apps, basic payment wrappers.
+
+The next milestone is mainnet deployment with production settlement credentials — then the first real merchant, the first viral moment, and the beginning of the network flywheel.
+
+---
+
+*Auron is programmable financial infrastructure that currently settles on Solana.*
+*Built from India. Built for the stablecoin internet.*
