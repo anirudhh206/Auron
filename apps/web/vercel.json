@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/workers/settlement",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/workers/reconcile",
+      "schedule": "0 2 * * *"
+    }
+  ]
+}

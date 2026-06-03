@@ -1,19 +1,52 @@
-﻿# Rust / Anchor build artifacts
+# Rust / Anchor
 target/
 .anchor/
+test-ledger/
 
-# Node
+# Node / Next.js
 node_modules/
 .next/
+dist/
+build/
+out/
 
-# Env
+# Environment (never commit)
 .env
 .env.local
 .env.*.local
+.env.production
+
+# Logs
+*.log
+npm-debug.log*
 
 # OS
 .DS_Store
 Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Turbo
+.turbo/
+
+# TypeScript
+*.tsbuildinfo
+
+# Vercel
+.vercel/
+
+# Supabase
+supabase/.branches/
+supabase/.temp/
+
+# Android build
+apps/web/android/.gradle/
+apps/web/android/app/build/
+
+# Misc
+skills-lock.json
 
 # Claude
 .claude/

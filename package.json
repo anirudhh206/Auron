@@ -1,0 +1,15 @@
+{
+  "name": "auron",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Programmable stablecoin settlement infrastructure for India",
+  "scripts": {
+    "dev":        "cd apps/web && npm run dev",
+    "build":      "cd apps/web && npm run build",
+    "lint":       "cd apps/web && npm run lint",
+    "type-check": "cd apps/web && npm run type-check"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

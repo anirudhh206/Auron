@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="aGrad" x1="40%" y1="0%" x2="60%" y2="100%">
+      <stop offset="0%"   stop-color="#a8c8ff"/>
+      <stop offset="45%"  stop-color="#7b72f5"/>
+      <stop offset="100%" stop-color="#4c3fd4"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="70%" cy="20%" r="60%">
+      <stop offset="0%"   stop-color="#6b5ce7" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#6b5ce7" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowBL" cx="10%" cy="90%" r="50%">
+      <stop offset="0%"   stop-color="#4c3fd4" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#4c3fd4" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" fill="#060610"/>
+
+  <!-- Ambient glow top-right -->
+  <rect width="512" height="512" fill="url(#glow)"/>
+  <!-- Ambient glow bottom-left -->
+  <rect width="512" height="512" fill="url(#glowBL)"/>
+
+  <!-- Left stroke of A: peak → bottom-left outer → bottom-left inner → back up -->
+  <path
+    d="M258,72 L88,448 L192,448 L268,258 Z"
+    fill="url(#aGrad)"
+  />
+
+  <!-- Right element — diagonal slash forming right leg + crossbar -->
+  <path
+    d="M385,188 L300,448 L384,448 L424,188 Z"
+    fill="url(#aGrad)"
+  />
+</svg>
