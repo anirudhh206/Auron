@@ -157,12 +157,14 @@ function Nav({ scrolled }) {
         ))}
       </div>
       <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-        <button className="ghost-btn" style={{ padding: "8px 16px", borderRadius: 6, fontSize: 12 }}>
+        <a href="https://solscan.io/tx/YOUR_TX_HASH?cluster=devnet" target="_blank" rel="noopener noreferrer"
+          className="ghost-btn" style={{ padding: "8px 16px", borderRadius: 6, fontSize: 12, display: "inline-block" }}>
           View on Solscan
-        </button>
-        <button className="lime-btn" style={{ padding: "9px 20px", borderRadius: 8, fontSize: 14 }}>
+        </a>
+        <Link href="/app"
+          className="lime-btn" style={{ padding: "9px 20px", borderRadius: 8, fontSize: 14, display: "inline-block", textDecoration: "none" }}>
           Connect Wallet
-        </button>
+        </Link>
       </div>
     </nav>
   );
@@ -264,10 +266,11 @@ function Hero() {
           Pay any UPI merchant directly from your Phantom wallet. No bank account. No exchange. No waiting. Verified on-chain in 14 seconds.
         </p>
         <div style={{ ...delay(300), display: "flex", gap: 16, alignItems: "center" }}>
-          <button className="lime-btn" style={{ padding: "14px 36px", borderRadius: 8, fontSize: 16 }}>
+          <Link href="/app"
+            className="lime-btn" style={{ padding: "14px 36px", borderRadius: 8, fontSize: 16, display: "inline-block", textDecoration: "none" }}>
             Open App
-          </button>
-          <a href="#" style={{
+          </Link>
+          <a href="https://solscan.io/tx/YOUR_TX_HASH?cluster=devnet" target="_blank" rel="noopener noreferrer" style={{
             fontSize: 13, color: C.textDim, textDecoration: "none",
             fontFamily: "'Geist Mono', monospace",
             borderBottom: `1px solid ${C.border}`,

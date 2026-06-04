@@ -15,6 +15,11 @@ import TransactionHistory from "@/components/TransactionHistory";
 import OnboardingFlow from "@/components/OnboardingFlow";
 import MerchantQRModal from "@/components/MerchantQRModal";
 import NetworkMismatchBanner from "@/components/NetworkMismatchBanner";
+import DashboardScreen from "@/components/auron/DashboardScreen";
+import PaymentIntentScreen from "@/components/auron/PaymentIntentScreen";
+import ConfirmCard from "@/components/auron/ConfirmCard";
+import SettlementScreen from "@/components/auron/SettlementScreen";
+import ReceiptScreen from "@/components/auron/ReceiptScreen";
 import { usePhantomDeepLink } from "@/hooks/usePhantomDeepLink";
 import {
   QrCode, MessageSquare, History, LogOut, Send,
@@ -44,6 +49,12 @@ export default function AppPage() {
   const [mobileTab, setMobileTab]       = useState<MobileTab>("home");
   const [supabaseUser, setSupabaseUser] = useState<SupabaseUser | null>(null);
   const [authLoading, setAuthLoading]   = useState(true);
+
+  // Payment flow state
+  const [pendingIntent, setPendingIntent] = useState<any>(null);
+  const [settling, setSettling] = useState(false);
+  const [completedUTR, setCompletedUTR] = useState<string | null>(null);
+  const [showReceipt, setShowReceipt] = useState(false);
 
   const chatRef = useRef<ChatInterfaceHandle>(null);
   const router  = useRouter();
