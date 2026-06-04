@@ -1,32 +1,64 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle, ExternalLink, Copy, Check, X } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { motion } from "framer-motion";
+import { CheckCircle, ExternalLink, Copy, Check, X, Share2 } from "lucide-react";
 import { getTxExplorerUrl } from "@/lib/solana";
+import confetti from "canvas-confetti";
 
 interface RevealCardProps {
   txHash: string;
   confirmText: string;
   onClose: () => void;
+  // Optional rich receipt data
+  merchantName?: string;
+  inrAmount?: number;
+  usdcAmount?: number;
+  utrNumber?: string;
+  network?: string;
 }
 
-export default function RevealCard({ txHash, confirmText, onClose }: RevealCardProps) {
-  const [copied, setCopied]   = useState(false);
-  const [visible, setVisible] = useState(false);
+export default function RevealCard({
+  txHash, confirmText, onClose,
+  merchantName, inrAmount, usdcAmount, utrNumber, network = "Solana",
+}: RevealCardProps) {
+  const [visible,     setVisible]     = useState(false);
+  const [copiedHash,  setCopiedHash]  = useState(false);
+  const [copiedUtr,   setCopiedUtr]   = useState(false);
 
   const txTime = new Date().toLocaleString("en-IN", {
-    month: "short", day: "numeric", year: "numeric",
+    day: "numeric", month: "short", year: "numeric",
     hour: "2-digit", minute: "2-digit",
   });
+
+  const shortHash = txHash.length > 16
+    ? `${txHash.slice(0, 8)}…${txHash.slice(-4)}`
+    : txHash;
 
   useEffect(() => {
     const t = setTimeout(() => setVisible(true), 30);
     return () => clearTimeout(t);
   }, []);
 
+  // Confetti on mount
   useEffect(() => {
-    const t = setTimeout(() => handleClose(), 18_000);
+    const timer = setTimeout(() => {
+      confetti({
+        particleCount: 80,
+        spread: 70,
+        origin: { y: 0.5 },
+        colors: ["#22C55E", "#3B82F6", "#22D3EE", "#A78BFA", "#F8FAFC"],
+        startVelocity: 35,
+        gravity: 0.9,
+        scalar: 0.85,
+      });
+    }, 200);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Auto-close
+  useEffect(() => {
+    const t = setTimeout(handleClose, 20_000);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -37,191 +69,160 @@ export default function RevealCard({ txHash, confirmText, onClose }: RevealCardP
   }
 
   function copyHash() {
-    navigator.clipboard.writeText(txHash);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    navigator.clipboard.writeText(txHash).catch(() => {});
+    setCopiedHash(true);
+    setTimeout(() => setCopiedHash(false), 2000);
   }
 
-  const shortHash = txHash.length > 16
-    ? `${txHash.slice(0, 8)}…${txHash.slice(-8)}`
-    : txHash;
+  function copyUtr() {
+    if (!utrNumber) return;
+    navigator.clipboard.writeText(utrNumber).catch(() => {});
+    setCopiedUtr(true);
+    setTimeout(() => setCopiedUtr(false), 2000);
+  }
+
+  async function shareReceipt() {
+    const text = [
+      "✅ Payment Successful via Auron",
+      merchantName ? `Merchant: ${merchantName}` : "",
+      inrAmount ? `Amount: ₹${inrAmount.toLocaleString("en-IN")}` : "",
+      usdcAmount ? `Paid: ${usdcAmount.toFixed(4)} USDC` : "",
+      `Network: ${network}`,
+      `Tx: ${shortHash}`,
+      utrNumber ? `UTR: ${utrNumber}` : "",
+    ].filter(Boolean).join("\n");
+
+    if (navigator.share) {
+      try { await navigator.share({ title: "Auron Payment Receipt", text }); } catch { /* dismissed */ }
+    } else {
+      navigator.clipboard.writeText(text).catch(() => {});
+    }
+  }
 
   return (
     <button
       type="button"
-      aria-label="Close reveal card"
-      className={cn(
-        "fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4",
-        "bg-black/70 backdrop-blur-md cursor-default",
-        "transition-opacity duration-300",
-        visible ? "opacity-100" : "opacity-0"
-      )}
-      onClick={(e) => e.target === e.currentTarget && handleClose()}
+      aria-label="Close payment receipt"
+      className={`fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 transition-opacity duration-300 ${visible ? "opacity-100" : "opacity-0"}`}
+      style={{ background: "rgba(0,0,0,0.85)", backdropFilter: "blur(10px)", cursor: "default" }}
+      onClick={e => e.target === e.currentTarget && handleClose()}
     >
-      <div
-        className={cn(
-          "w-full max-w-md rounded-2xl overflow-hidden",
-          "transition-all duration-300 ease-out",
-          visible ? "translate-y-0 scale-100" : "translate-y-8 scale-95"
-        )}
+      <motion.div
+        initial={{ y: 60, scale: 0.96 }} animate={{ y: 0, scale: 1 }} exit={{ y: 40, scale: 0.97 }}
+        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+        onClick={e => e.stopPropagation()}
         style={{
-          background: "#12121A",
-          border: "1px solid rgba(201,168,76,0.4)",
-          boxShadow: "0 0 0 1px rgba(201,168,76,0.1), 0 32px 64px rgba(0,0,0,0.6), 0 0 80px rgba(201,168,76,0.08)",
+          width: "100%", maxWidth: 420,
+          borderRadius: "24px 24px 0 0",
+          background: "#07090D",
+          border: "1px solid rgba(148,163,184,0.1)",
+          borderBottom: "none",
+          boxShadow: "0 -24px 80px rgba(0,0,0,0.6)",
+          overflow: "hidden",
         }}
+        className="sm:rounded-3xl sm:border-b"
       >
-        {/* ── Header ───────────────────────────────────────────── */}
-        <div
-          className="px-6 py-5 flex items-center justify-between"
-          style={{ borderBottom: "1px solid rgba(201,168,76,0.15)" }}
-        >
-          <div className="flex items-center gap-3">
-            <div
-              className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-              style={{ background: "rgba(29,158,117,0.15)", border: "1px solid rgba(29,158,117,0.3)" }}
-            >
-              <CheckCircle size={18} style={{ color: "#1D9E75" }} />
-            </div>
-            <div>
-              <p className="font-display font-bold text-base" style={{ color: "#F0EEE8" }}>
-                What just happened
-              </p>
-              <p className="text-xs mt-0.5" style={{ color: "#8A8A9A" }}>Confirmed on Solana</p>
-            </div>
-          </div>
-          <button
-            type="button"
-            aria-label="Close"
-            onClick={handleClose}
-            className="p-1.5 rounded-lg transition-colors"
-            style={{ color: "#4A4A5A" }}
-            onMouseEnter={e => (e.currentTarget.style.color = "#F0EEE8")}
-            onMouseLeave={e => (e.currentTarget.style.color = "#4A4A5A")}
-          >
-            <X size={16} />
+        {/* Drag handle */}
+        <div className="sm:hidden flex justify-center pt-3 pb-1">
+          <div style={{ width: 36, height: 4, borderRadius: 999, background: "rgba(148,163,184,0.2)" }} />
+        </div>
+
+        {/* Close button */}
+        <div style={{ display: "flex", justifyContent: "flex-end", padding: "12px 16px 0" }}>
+          <button onClick={handleClose} style={{ padding: 6, borderRadius: 8, background: "rgba(148,163,184,0.08)", border: "none", cursor: "pointer", color: "var(--text-muted)", display: "flex", alignItems: "center" }}>
+            <X size={14} />
           </button>
         </div>
 
-        {/* ── Transaction summary ───────────────────────────────── */}
-        <div className="px-6 py-5 space-y-4">
+        <div style={{ padding: "12px 20px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
 
-          {/* What happened */}
-          <div
-            className="rounded-xl p-4"
-            style={{ background: "rgba(26,26,38,0.8)", border: "1px solid rgba(201,168,76,0.12)" }}
-          >
-            <p className="text-xs uppercase tracking-widest font-medium mb-2" style={{ color: "#4A4A5A" }}>
-              Transaction
-            </p>
-            <p className="text-base font-medium leading-relaxed" style={{ color: "#F0EEE8" }}>
-              {confirmText}
-            </p>
-          </div>
-
-          {/* Details grid */}
-          <div className="space-y-3">
-            <DetailRow label="Recorded on" value="Auron · Solana blockchain" />
-            <DetailRow label="Time" value={txTime} />
-            <DetailRow
-              label="Can be altered?"
-              value="No. Ever."
-              valueStyle={{ color: "#1D9E75", fontWeight: 600 }}
-            />
-            <DetailRow label="Network fee" value="< $0.001" />
-          </div>
-
-          {/* TX Hash */}
-          <div>
-            <p className="text-xs uppercase tracking-widest font-medium mb-2" style={{ color: "#4A4A5A" }}>
-              Transaction Hash
-            </p>
-            <div
-              className="flex items-center gap-2 rounded-xl px-3 py-2.5"
-              style={{ background: "#0A0A0F", border: "1px solid #2A2A3A" }}
-            >
-              <span className="font-mono text-xs flex-1 truncate" style={{ color: "#8A8A9A" }}>
-                {shortHash}
-              </span>
-              <button
-                type="button"
-                onClick={copyHash}
-                className="p-1.5 rounded-lg transition-colors shrink-0"
-                style={{ color: copied ? "#1D9E75" : "#4A4A5A" }}
-                title="Copy full hash"
+          {/* Success icon + title */}
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, paddingTop: 8 }}>
+            <div style={{ position: "relative" }}>
+              <motion.div
+                initial={{ scale: 0 }} animate={{ scale: 1 }}
+                transition={{ type: "spring", stiffness: 500, damping: 20, delay: 0.1 }}
+                style={{ width: 72, height: 72, borderRadius: "50%", background: "rgba(34,197,94,0.12)", border: "2px solid rgba(34,197,94,0.4)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 40px rgba(34,197,94,0.25)" }}
               >
-                {copied ? <Check size={13} /> : <Copy size={13} />}
-              </button>
+                <CheckCircle size={36} color="#22C55E" />
+              </motion.div>
+              {/* Pulse */}
+              <motion.div
+                animate={{ scale: [1, 1.5, 1], opacity: [0.4, 0, 0.4] }}
+                transition={{ duration: 2.5, repeat: Infinity, ease: "easeOut" }}
+                style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "2px solid rgba(34,197,94,0.35)" }}
+              />
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <p style={{ fontSize: 20, fontWeight: 800, color: "var(--text-primary)", margin: "0 0 6px", letterSpacing: "-0.03em" }}>Payment Successful</p>
+              <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>Your payment has been completed.</p>
             </div>
           </div>
 
-          {/* Blockchain education */}
-          <div
-            className="rounded-xl p-4 gold-border-left"
-            style={{ background: "rgba(201,168,76,0.04)" }}
-          >
-            <p className="text-sm leading-relaxed italic" style={{ color: "#8A8A9A" }}>
-              "This is what blockchain means. A record that nobody — not us, not your bank,
-              not any government — can change or delete."
-            </p>
+          {/* Receipt table */}
+          <div style={{ borderRadius: 16, background: "rgba(15,23,42,0.7)", border: "1px solid rgba(148,163,184,0.08)", overflow: "hidden" }}>
+            {[
+              { label: "Merchant",   value: merchantName ?? confirmText.split(" ")[0] ?? "—" },
+              { label: "Amount",     value: inrAmount ? `₹${inrAmount.toLocaleString("en-IN")}` : "—" },
+              { label: "Paid",       value: usdcAmount ? `${usdcAmount.toFixed(2)} USDC` : "—" },
+              { label: "Network",    value: network },
+              { label: "Settlement", value: "UPI" },
+              { label: "Date & Time", value: txTime },
+            ].map(({ label, value }, i, arr) => (
+              <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: i < arr.length - 1 ? "1px solid rgba(148,163,184,0.06)" : "none" }}>
+                <span style={{ fontSize: 13, color: "var(--text-muted)" }}>{label}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{value}</span>
+              </div>
+            ))}
+
+            {/* Tx Hash row */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderTop: "1px solid rgba(148,163,184,0.06)" }}>
+              <span style={{ fontSize: 13, color: "var(--text-muted)" }}>Transaction Hash</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 12, fontFamily: "monospace", color: "var(--text-secondary)" }}>{shortHash}</span>
+                <button onClick={copyHash} style={{ padding: 5, borderRadius: 6, background: "rgba(148,163,184,0.08)", border: "none", cursor: "pointer", display: "flex", alignItems: "center" }}>
+                  {copiedHash ? <Check size={11} color="#22C55E" /> : <Copy size={11} color="var(--text-muted)" />}
+                </button>
+              </div>
+            </div>
+
+            {/* UTR row */}
+            {utrNumber && (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderTop: "1px solid rgba(148,163,184,0.06)" }}>
+                <span style={{ fontSize: 13, color: "var(--text-muted)" }}>UPI Reference (UTR)</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 12, fontFamily: "monospace", color: "var(--text-secondary)" }}>{utrNumber}</span>
+                  <button onClick={copyUtr} style={{ padding: 5, borderRadius: 6, background: "rgba(148,163,184,0.08)", border: "none", cursor: "pointer", display: "flex", alignItems: "center" }}>
+                    {copiedUtr ? <Check size={11} color="#22C55E" /> : <Copy size={11} color="var(--text-muted)" />}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Actions */}
-          <div className="flex gap-3 pt-1">
-            <a
-              href={getTxExplorerUrl(txHash)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-medium transition-all duration-150"
-              style={{
-                background: "rgba(26,26,38,0.8)",
-                border: "1px solid #2A2A3A",
-                color: "#8A8A9A",
-              }}
-              onMouseEnter={e => {
-                e.currentTarget.style.borderColor = "rgba(201,168,76,0.3)";
-                e.currentTarget.style.color = "#F0EEE8";
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.borderColor = "#2A2A3A";
-                e.currentTarget.style.color = "#8A8A9A";
-              }}
-            >
-              <ExternalLink size={14} />
-              View on Explorer
-            </a>
-            <button
-              type="button"
-              onClick={handleClose}
-              className="flex-1 py-3 rounded-xl text-sm font-bold transition-all duration-150 btn-gold"
-            >
-              Continue
+          {/* Buttons */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {/* Share receipt */}
+            <button onClick={shareReceipt}
+              style={{ width: "100%", padding: "13px", borderRadius: 12, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(148,163,184,0.15)", fontSize: 14, fontWeight: 600, color: "var(--text-secondary)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              <Share2 size={15} /> Share Receipt
             </button>
+
+            {/* Back to home */}
+            <motion.button onClick={handleClose}
+              whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+              style={{ width: "100%", padding: "13px", borderRadius: 12, background: "#3B82F6", border: "none", fontSize: 14, fontWeight: 700, color: "#fff", cursor: "pointer", boxShadow: "0 4px 20px rgba(59,130,246,0.4)" }}>
+              Back to Home
+            </motion.button>
+
+            {/* View on explorer */}
+            <a href={getTxExplorerUrl(txHash)} target="_blank" rel="noopener noreferrer"
+              style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, color: "var(--text-muted)", textDecoration: "none", padding: "6px" }}>
+              <ExternalLink size={12} /> View on Solscan
+            </a>
           </div>
-
-          <p className="text-center text-xs" style={{ color: "#2A2A3A" }}>
-            Closes automatically in a few seconds
-          </p>
         </div>
-      </div>
+      </motion.div>
     </button>
-  );
-}
-
-function DetailRow({
-  label,
-  value,
-  valueStyle,
-}: {
-  label: string;
-  value: string;
-  valueStyle?: React.CSSProperties;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-4">
-      <span className="text-sm shrink-0" style={{ color: "#4A4A5A" }}>{label}</span>
-      <span className="text-sm text-right" style={{ color: "#8A8A9A", ...valueStyle }}>
-        {value}
-      </span>
-    </div>
   );
 }

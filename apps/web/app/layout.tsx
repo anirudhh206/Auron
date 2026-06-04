@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Inter, DM_Sans, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import Providers from "./providers";
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
 
 const inter = Inter({
   variable: "--font-inter",

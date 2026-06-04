@@ -12,7 +12,9 @@ export type TransactionStatus =
   | "verified"
   | "settling"
   | "completed"
-  | "failed";
+  | "failed"
+  | "refund_pending"
+  | "refunded";
 
 export interface Transaction {
   id:                 string;        // UUID
@@ -39,6 +41,11 @@ export interface Transaction {
   risk_flags:         string[] | null;
   provider:           string | null;
   fallback_provider:  string | null;
+
+  refund_tx_signature: string | null;
+  refund_reason:       string | null;
+  receipt_hash:        string | null;
+  quote_expires_at:    string | null; // ISO string
 
   created_at:         string;        // ISO string
   updated_at:         string;
