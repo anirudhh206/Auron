@@ -4,10 +4,10 @@
  * Pipeline:
  *   1. Validate request body
  *   2. Idempotency + replay-protection checks
- *   3. Create ledger record (initiated → quoted → signed)
- *   4. Verify Solana USDC transfer on-chain (hard gate)
- *   5. Transition ledger → verified → settling
- *   6. Create settlement record (pending)
+ *   3. Liquidity gate — treasury reserve + in-flight cap check
+ *   4. Create ledger record (initiated → quoted → signed)
+ *   5. Verify Solana USDC transfer on-chain (hard gate)
+ *   6. Transition ledger → verified → settling
  *   7. Dispatch to correct provider based on routing engine selection
  *   8. Update ledger with result (completed / failed)
  *
@@ -18,6 +18,7 @@
 import { NextRequest, NextResponse }  from "next/server";
 import { verifyUsdcTransfer }          from "@/lib/verify-tx";
 import { initiateOnMetaPayout }        from "@/lib/onmeta";
+import { checkLiquidityGate }          from "@/lib/liquidity";
 // Razorpay fallback is handled by the settlement worker (PATH B — treasury + Razorpay X).
 // v1/pay only dispatches PATH A (OnMeta). Worker retries handle PATH B automatically.
 import {
@@ -218,7 +219,37 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
   }
 
-  // ── 3. Create ledger record (initiated → quoted → signed) ─────────────────
+  // ── 3. Liquidity gate — enforce before any ledger record is created ─────────
+  // Checks: min/max amount, treasury reserve, in-flight cap.
+  // In demo mode (DEMO_SETTLEMENT=true) the gate fails-open when the RPC is
+  // unavailable so local development is never blocked by treasury balance.
+  const liquidityCheck = await checkLiquidityGate(d.usdcAmount);
+  if (!liquidityCheck.allowed) {
+    console.warn(
+      `[v1/pay] LIQUIDITY GATE REJECTED paymentId=${d.paymentId} ` +
+      `reason="${liquidityCheck.reason}" ` +
+      `treasury=${liquidityCheck.state.treasuryUsdc.toFixed(2)} ` +
+      `inFlight=${liquidityCheck.state.inFlightUsdc.toFixed(2)}`
+    );
+    return NextResponse.json(
+      {
+        success:         false,
+        paymentId:       d.paymentId,
+        error:           liquidityCheck.reason,
+        failureCategory: "liquidity_insufficient",
+        retryable:       false,
+        liquidity: {
+          treasuryUsdc:  liquidityCheck.state.treasuryUsdc,
+          availableUsdc: liquidityCheck.state.availableUsdc,
+          inFlightUsdc:  liquidityCheck.state.inFlightUsdc,
+        },
+        durationMs: Date.now() - start,
+      },
+      { status: 503 }
+    );
+  }
+
+  // ── 4. Create ledger record (initiated → quoted → signed) ─────────────────
   const txnResult = await createTransaction({
     payment_id:        d.paymentId,
     idempotency_key:   d.idempotencyKey,
@@ -255,7 +286,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     });
   }
 
-  // ── 4. Verify Solana TX ───────────────────────────────────────────────────
+  // ── 5. Verify Solana TX ───────────────────────────────────────────────────
   let verifiedTx = false;
 
   if (skipVerification) {
@@ -291,7 +322,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     await transitionTransaction(txnId, "verified", { reason: "On-chain USDC transfer confirmed" });
   }
 
-  // ── 5. Create settlement record + transition to settling ──────────────────
+  // ── 6. Create settlement record + transition to settling ──────────────────
   let settlementId: string | null = null;
   const provider = d.provider ?? "razorpay";
 
@@ -301,7 +332,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     await transitionTransaction(txnId, "settling", { reason: `Settlement dispatched via ${provider}` });
   }
 
-  // ── 6. Dispatch to provider selected by routing engine ────────────────────
+  // ── 7. Dispatch to provider selected by routing engine ────────────────────
   const result = await dispatchSettlement(provider, {
     inrAmount:      d.inrAmount,
     merchantUpiId:  d.merchantUpiId,
@@ -339,7 +370,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     });
   }
 
-  // ── 7. Settlement failed ──────────────────────────────────────────────────
+  // ── 8. Settlement failed ──────────────────────────────────────────────────
   const httpStatus = result.retryable ? 502 : 422;
 
   if (txnId && !result.retryable) {
