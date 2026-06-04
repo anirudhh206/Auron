@@ -22,10 +22,8 @@ import SettlementScreen from "@/components/auron/SettlementScreen";
 import ReceiptScreen from "@/components/auron/ReceiptScreen";
 import { usePhantomDeepLink } from "@/hooks/usePhantomDeepLink";
 import {
-  QrCode, MessageSquare, History, LogOut, Send,
-  Lock, FileText, ShieldCheck, Wallet, ChevronRight,
-  Upload, Bell, Home, Activity, User, RefreshCw,
-  ArrowUpRight, Check,
+  QrCode, MessageSquare, History, LogOut,
+  Bell, Home, Activity, User,
 } from "lucide-react";
 import AuronLogo from "@/components/AuronLogo";
 import Link from "next/link";
@@ -183,7 +181,7 @@ export default function AppPage() {
   // ── Loading ──────────────────────────────────────────────────────────────
   if (authLoading) {
     return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#07090D" }}>
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#08080A" }}>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
           <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ duration: 1.6, repeat: Infinity }}>
             <AuronLogo size={44} />
