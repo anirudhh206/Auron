@@ -486,7 +486,7 @@ export default function AppPage() {
           }}
           onBack={() => {
             setQrMerchantData(null);
-            setMobileTab("home");
+            setMobileTab("qrscan");
           }}
         />
       ) : mobileTab === "chat" ? (
