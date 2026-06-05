@@ -30,6 +30,7 @@ import ConfirmCard from "@/components/auron/ConfirmCard";
 import SettlementScreen from "@/components/auron/SettlementScreen";
 import ReceiptScreen from "@/components/auron/ReceiptScreen";
 import QRScannerScreen, { type ScannedUPIData } from "@/components/auron/QRScannerScreen";
+import QRAmountScreen from "@/components/auron/QRAmountScreen";
 import { usePhantomDeepLink } from "@/hooks/usePhantomDeepLink";
 import { QrCode, MessageSquare, History, LogOut, Home, Activity, User } from "lucide-react";
 import AuronLogo from "@/components/AuronLogo";
@@ -37,7 +38,7 @@ import Link from "next/link";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type MobileTab = "home" | "scan" | "qrscan" | "chat" | "activity" | "profile";
+type MobileTab = "home" | "scan" | "qrscan" | "qramount" | "chat" | "activity" | "profile";
 
 interface PendingIntent {
   merchant:   string;
@@ -85,12 +86,17 @@ export default function AppPage() {
 
   // ── Payment flow state ──────────────────────────────────────────────────────
   const [pendingIntent,  setPendingIntent]  = useState<PendingIntent | null>(null);
-  const [settling,       setSettling]       = useState(false);
+  const [signing,        setSigning]        = useState(false);  // waiting for Phantom
+  const [settling,       setSettling]       = useState(false);  // on-chain confirmed, showing animation
   const [receiptData,    setReceiptData]    = useState<ReceiptData | null>(null);
   const [showReceipt,    setShowReceipt]    = useState(false);
   const [payError,       setPayError]       = useState<string | null>(null);
-  // Pre-fill query for PaymentIntentScreen (set when QR scan returns no amount)
+  // Pre-fill query for PaymentIntentScreen (legacy — kept for direct chat payments)
   const [qrPrefill,      setQrPrefill]      = useState<string | undefined>(undefined);
+  // Merchant data from QR scan — drives QRAmountScreen
+  const [qrMerchantData, setQrMerchantData] = useState<{
+    upiId: string; merchantName: string; prefillAmount?: number;
+  } | null>(null);
 
   // Holds the real UTR/receipt coming back async from the payment API
   // SettlementScreen runs its own timer; when it finishes, we use whatever
@@ -128,8 +134,20 @@ export default function AppPage() {
     }));
 
   // ── Payment handler ─────────────────────────────────────────────────────────
-  async function executePayment(intent: PendingIntent): Promise<ReceiptData> {
+  // onTxConfirmed fires after on-chain confirmation — caller uses it to start
+  // the SettlementScreen animation only once the real tx is done.
+  async function executePayment(
+    intent: PendingIntent,
+    onTxConfirmed?: () => void,
+  ): Promise<ReceiptData> {
     if (!address) throw new Error("Wallet not connected");
+
+    // Balance check — fail fast before building tx
+    if (!IS_DEMO && publicKey && usdcBalance < intent.usdcAmount) {
+      throw new Error(
+        `Insufficient USDC balance. You need ${intent.usdcAmount.toFixed(2)} USDC but your wallet has ${usdcBalance.toFixed(2)} USDC.`
+      );
+    }
 
     const paymentId      = crypto.randomUUID();
     const idempotencyKey = `${paymentId}-v1`;
@@ -145,7 +163,6 @@ export default function AppPage() {
       fromAddress:   address,
       toAddress:     FEE_WALLET.toString(),
     });
-    // Override paymentId so we use the one we generated
     const fullRecord = { ...record, paymentId };
     addPayment(fullRecord);
     setActivePayment(paymentId);
@@ -156,31 +173,59 @@ export default function AppPage() {
 
     // 2. Build & sign Solana USDC tx
     if (IS_DEMO || !publicKey) {
-      // Demo / deep-link mode — generate a stub signature
+      // Demo mode — generate stub signature then immediately start settlement UI
       signature = `demo_${paymentId.slice(0, 8)}_${Date.now()}`;
       transition(paymentId, "tx_confirmed", "Demo mode — skipping on-chain transfer");
+      onTxConfirmed?.();
     } else {
       try {
         transition(paymentId, "building_tx", "Building USDC transfer transaction");
-        const tx  = await buildUSDCTransferTx(publicKey, FEE_WALLET, intent.usdcAmount);
+        const tx   = await buildUSDCTransferTx(publicKey, FEE_WALLET, intent.usdcAmount);
+        const conn = getConnection();
 
         transition(paymentId, "awaiting_signature", "Waiting for Phantom signature");
-        const conn = getConnection();
-        const sig  = await sendTransaction(tx, conn);
-        signature  = sig;
+        // skipPreflight: Phantom already simulated — skip the RPC re-simulation
+        // that can fail on devnet due to rate limits / stale blockhash
+        const sig = await sendTransaction(tx, conn, {
+          skipPreflight: true,
+          maxRetries: 3,
+        });
+        signature = sig;
 
         // Wait for on-chain confirmation
         transition(paymentId, "tx_pending", `Transaction submitted: ${sig.slice(0, 8)}…`);
         const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash();
         await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
         transition(paymentId, "tx_confirmed", "On-chain USDC transfer confirmed");
+
+        // TX is on-chain — NOW trigger the settlement animation
+        onTxConfirmed?.();
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : "Transaction failed";
-        const cancelled = msg.toLowerCase().includes("user rejected") ||
-                          msg.toLowerCase().includes("cancelled") ||
-                          msg.toLowerCase().includes("rejected");
-        transition(paymentId, "failed",
-          cancelled ? "User cancelled payment" : `Transaction failed: ${msg}`);
+        // WalletSendTransactionError wraps the real error — unwrap it
+        const walletErr = err as {
+          message?: string;
+          error?: { message?: string; logs?: string[] };
+        };
+        const rawMsg = walletErr?.error?.message ?? walletErr?.message ?? "Transaction failed";
+        const logs   = walletErr?.error?.logs ?? [];
+
+        // Map common on-chain errors to human-readable messages
+        let msg = rawMsg;
+        if (logs.some(l => l.includes("insufficient funds") || l.includes("0x1"))) {
+          msg = "Insufficient USDC balance to complete this payment";
+        } else if (logs.some(l => l.includes("0x0"))) {
+          msg = "Insufficient SOL to pay the network fee (~0.001 SOL needed)";
+        } else if (rawMsg.includes("Blockhash not found") || rawMsg.includes("block height exceeded")) {
+          msg = "Transaction expired — please try again";
+        } else if (rawMsg.includes("0x1771") || rawMsg.includes("owner does not match")) {
+          msg = "Token account error — try reconnecting your wallet";
+        }
+
+        const cancelled = rawMsg.toLowerCase().includes("user rejected") ||
+                          rawMsg.toLowerCase().includes("cancelled") ||
+                          rawMsg.toLowerCase().includes("rejected");
+
+        transition(paymentId, "failed", cancelled ? "Payment cancelled" : `Failed: ${msg}`);
         throw new Error(cancelled ? "Payment cancelled" : msg);
       }
     }
@@ -278,32 +323,25 @@ export default function AppPage() {
   function handleScanQR() { setMobileTab("qrscan"); }
 
   function handleQRScanned(data: ScannedUPIData) {
-    if (data.amount && data.amount > 0) {
-      // QR contains amount — go straight to ConfirmCard
-      setPendingIntent({
-        merchant:   data.merchantName,
-        upiId:      data.upiId,
-        inrAmount:  data.amount,
-        usdcAmount: parseFloat((data.amount / (liveRate || 84)).toFixed(6)),
-        fxRate:     liveRate || 84,
-      });
-      setMobileTab("home");
-    } else {
-      // QR has no amount — open PaymentIntentScreen pre-filled with UPI ID
-      // so Claude can ask for the amount
-      const query = `pay ${data.upiId}${data.merchantName ? ` to ${data.merchantName}` : ""}`;
-      setQrPrefill(query);
-      setMobileTab("chat");
-    }
+    // Always go to QRAmountScreen — prefill amount if the QR contained one,
+    // otherwise leave it blank for the user to type.
+    setQrMerchantData({
+      upiId:        data.upiId,
+      merchantName: data.merchantName,
+      prefillAmount: data.amount && data.amount > 0 ? data.amount : undefined,
+    });
+    setMobileTab("qramount");
   }
 
   function resetPaymentFlow() {
     setPendingIntent(null);
+    setSigning(false);
     setSettling(false);
     setReceiptData(null);
     setShowReceipt(false);
     setPayError(null);
     setQrPrefill(undefined);
+    setQrMerchantData(null);
     realReceiptRef.current = null;
     setMobileTab("home");
   }
@@ -370,6 +408,29 @@ export default function AppPage() {
             });
             setSettling(false);
             setShowReceipt(true);
+          }}
+        />
+      ) : mobileTab === "qramount" && qrMerchantData ? (
+        <QRAmountScreen
+          merchantName={qrMerchantData.merchantName}
+          upiId={qrMerchantData.upiId}
+          fxRate={liveRate || 84}
+          prefillAmount={qrMerchantData.prefillAmount}
+          onPay={(inrAmount, usdcAmount) => {
+            const rate = liveRate || 84;
+            setPendingIntent({
+              merchant:   qrMerchantData.merchantName,
+              upiId:      qrMerchantData.upiId,
+              inrAmount,
+              usdcAmount,
+              fxRate:     rate,
+            });
+            setQrMerchantData(null);
+            setMobileTab("home");
+          }}
+          onBack={() => {
+            setQrMerchantData(null);
+            setMobileTab("home");
           }}
         />
       ) : mobileTab === "chat" ? (
@@ -508,8 +569,8 @@ export default function AppPage() {
             />
           )}
 
-          {/* Home tab — DashboardScreen / SettlementScreen / ReceiptScreen */}
-          <div className={mobileTab === "home" || mobileTab === "chat" || settling || showReceipt ? "h-full" : "hidden"}>
+          {/* Home tab — DashboardScreen / QRAmountScreen / SettlementScreen / ReceiptScreen */}
+          <div className={mobileTab === "home" || mobileTab === "chat" || mobileTab === "qramount" || settling || showReceipt ? "h-full" : "hidden"}>
             {mobileTab !== "qrscan" && paymentFlow}
           </div>
 
@@ -534,7 +595,7 @@ export default function AppPage() {
         </div>
 
         {/* Bottom Navigation */}
-        {!settling && !showReceipt && mobileTab !== "qrscan" && (
+        {!signing && !settling && !showReceipt && mobileTab !== "qrscan" && mobileTab !== "qramount" && (
           <BottomNav tab={mobileTab} setTab={(t) => {
             if (t === "scan") {
               setMobileTab("qrscan");
@@ -558,7 +619,7 @@ export default function AppPage() {
 
       {/* ── ConfirmCard overlay (shared mobile + desktop) ───────────────────── */}
       <AnimatePresence>
-        {pendingIntent && !settling && !showReceipt && (
+        {pendingIntent && !signing && !settling && !showReceipt && (
           <ConfirmCard
             merchant={pendingIntent.merchant}
             upiId={pendingIntent.upiId}
@@ -570,29 +631,85 @@ export default function AppPage() {
             estTime="~20s"
             quoteExpiresIn={60}
             onConfirm={() => {
-              // Start settlement animation immediately for UX
-              setMobileTab("chat");  // ensures chat tab is "active"
-              setSettling(true);
+              // Show "waiting for Phantom" — do NOT start SettlementScreen yet
+              setSigning(true);
               setPayError(null);
 
-              // Fire actual payment in background
-              executePayment(pendingIntent)
+              executePayment(
+                pendingIntent,
+                // Called only after tx is confirmed on-chain
+                () => {
+                  setSigning(false);
+                  setSettling(true);
+                },
+              )
                 .then(receipt => {
-                  // Store real receipt; SettlementScreen will use it when its timer finishes
                   realReceiptRef.current = receipt;
                 })
                 .catch(err => {
                   const msg = err instanceof Error ? err.message : "Payment failed";
-                  // If user cancelled (before settling animation ends), abort
-                  if (msg.includes("cancelled")) {
-                    setSettling(false);
-                    setPendingIntent(null);
+                  setSigning(false);
+                  // Always clear pendingIntent on failure — prevents ConfirmCard
+                  // from reappearing and creating a confirmation loop
+                  setPendingIntent(null);
+                  // Only show error toast for non-cancellation failures
+                  if (!msg.includes("cancelled")) {
+                    setPayError(msg);
                   }
-                  setPayError(msg);
                 });
             }}
             onCancel={() => setPendingIntent(null)}
           />
+        )}
+      </AnimatePresence>
+
+      {/* ── Signing overlay — shown while waiting for Phantom ──────────────── */}
+      <AnimatePresence>
+        {signing && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={{
+              position: "fixed", inset: 0, zIndex: 90,
+              background: "rgba(8,8,10,0.92)",
+              display: "flex", flexDirection: "column",
+              alignItems: "center", justifyContent: "center", gap: 20,
+            }}
+          >
+            <motion.div
+              animate={{ scale: [1, 1.08, 1] }}
+              transition={{ duration: 1.4, repeat: Infinity }}
+              style={{
+                width: 64, height: 64, borderRadius: 18,
+                background: "rgba(200,241,53,0.08)",
+                border: "1px solid rgba(200,241,53,0.25)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+              }}
+            >
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
+                  stroke="#C8F135" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </motion.div>
+            <div style={{ textAlign: "center" }}>
+              <p style={{ fontFamily: "'Geist Mono',monospace", fontSize: 11, color: "#C8F135", letterSpacing: "0.12em", marginBottom: 8 }}>
+                CONFIRM IN PHANTOM
+              </p>
+              <p style={{ fontSize: 13, color: "#9A9AA8", margin: 0 }}>
+                Approve the transaction in your wallet
+              </p>
+            </div>
+            <button
+              onClick={() => { setSigning(false); setPendingIntent(null); }}
+              style={{
+                marginTop: 8, background: "none", border: "1px solid #26262A",
+                borderRadius: 8, padding: "8px 20px",
+                fontFamily: "'Geist Mono',monospace", fontSize: 11,
+                color: "#606068", cursor: "pointer",
+              }}
+            >
+              CANCEL
+            </button>
+          </motion.div>
         )}
       </AnimatePresence>
 

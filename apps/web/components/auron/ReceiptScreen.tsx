@@ -242,7 +242,7 @@ const STYLES = `
 
 export default function ReceiptScreen({
   merchant, upiId, inrAmount, usdcAmount, utr,
-  receiptHash = "3f8a2c...e4d1", solscanUrl, settledAt, auditTrail, onDone,
+  receiptHash, solscanUrl, settledAt, auditTrail, onDone,
 }: ReceiptScreenProps) {
   const [auditOpen, setAuditOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -354,12 +354,14 @@ export default function ReceiptScreen({
                 </svg>
               </a>
             )}
-            <div className="proof-link" style={{ cursor: "default" }}>
-              <span style={{ fontSize: 13, color: C.muted }}>Receipt hash</span>
-              <span style={{ fontFamily: "'Geist Mono',monospace", fontSize: 11, color: C.dim }}>
-                {receiptHash}
-              </span>
-            </div>
+            {receiptHash && (
+              <div className="proof-link" style={{ cursor: "default" }}>
+                <span style={{ fontSize: 13, color: C.muted }}>Receipt hash</span>
+                <span style={{ fontFamily: "'Geist Mono',monospace", fontSize: 11, color: C.dim }}>
+                  {receiptHash}
+                </span>
+              </div>
+            )}
           </motion.div>
 
           <motion.div {...fadeUp(0.18)}>
