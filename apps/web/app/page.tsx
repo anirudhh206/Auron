@@ -297,7 +297,7 @@ function ProblemSection() {
             Current off-ramps are built for retailers, not infrastructure.
           </h2>
           <p style={{ fontSize: 16, color: C.textMuted, lineHeight: 1.75, maxWidth: 460 }}>
-            If you receive USDC from a foreign client, DeFi protocol, or on-chain payment — converting it to spendable INR takes 2–3 business days, exchange fees, and a KYC'd bank account. Auron eliminates that entirely.
+            If you receive USDC from a foreign client, DeFi protocol, or on-chain payment — converting it to spendable INR takes 2–3 business days, exchange fees, and a KYC&apos;d bank account. Auron eliminates that entirely.
           </p>
         </div>
         <div className={`reveal ${visible ? "visible" : ""}`} style={{ transitionDelay: "120ms" }}>
@@ -572,7 +572,7 @@ function SavingsVault() {
             Lock savings. On-chain. Immovable until unlock.
           </h2>
           <p style={{ fontSize: 15, color: C.textMuted, lineHeight: 1.75, marginBottom: 28 }}>
-            Auron's savings vault is an Anchor program deployed on Solana. Set an unlock date. Your USDC is locked in the program — not in a custodial account. The program enforces the time-lock. Nobody can touch it before the date.
+            Auron&apos;s savings vault is an Anchor program deployed on Solana. Set an unlock date. Your USDC is locked in the program — not in a custodial account. The program enforces the time-lock. Nobody can touch it before the date.
           </p>
           <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 14px" }}>
             <p style={{ fontFamily: "'Geist Mono', monospace", fontSize: 11, color: C.textDim, marginBottom: 4 }}>ANCHOR PROGRAM</p>

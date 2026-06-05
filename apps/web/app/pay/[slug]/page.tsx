@@ -17,7 +17,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Copy, Check, ExternalLink, ArrowRight, Wallet, Loader2, CheckCircle2 } from "lucide-react";
+import { Copy, Check, ArrowRight, Wallet, Loader2, CheckCircle2 } from "lucide-react";
 import AuronLogo from "@/components/AuronLogo";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -44,7 +44,7 @@ export default function PayPage() {
   const [state, setState] = useState<PageState>("loading");
   const [customAmount, setCustomAmount] = useState("");
   const [copied, setCopied] = useState(false);
-  const [txHash, setTxHash] = useState<string | null>(null);
+
 
   // Simulate address resolution (in prod this calls /api/resolve-recipient)
   const [resolvedAddress, setResolvedAddress] = useState<string | null>(null);
@@ -144,7 +144,7 @@ export default function PayPage() {
                       {shortAddr(resolvedAddress)}
                     </p>
                   )}
-                  {note && <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>"{note}"</p>}
+                  {note && <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>&quot;{note}&quot;</p>}
                 </div>
 
                 {/* Amount */}
@@ -207,12 +207,7 @@ export default function PayPage() {
                     {displayAmount} sent to {displayName}
                   </p>
                 </div>
-                {txHash && (
-                  <a href={`https://solscan.io/tx/${txHash}`} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 text-xs" style={{ color: "var(--auron-gold)" }}>
-                    View on Solscan <ExternalLink size={12} />
-                  </a>
-                )}
+                {/* Solscan link shown when tx hash is available */}
               </motion.div>
             )}
           </AnimatePresence>

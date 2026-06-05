@@ -82,7 +82,7 @@ export async function buildLockSavingsTx(
     Math.floor(Date.now() / 1000) + durationDays * 86_400
   );
 
-  const [vault, _bump]    = deriveVaultPDA(owner);
+  const [vault]           = deriveVaultPDA(owner);
   const vaultToken        = await getVaultTokenAccount(vault);
   const ownerToken        = await getAssociatedTokenAddress(USDC_MINT, owner);
 
@@ -134,7 +134,7 @@ export async function buildUnlockSavingsTx(
   connection: Connection,
   owner: PublicKey
 ): Promise<Transaction> {
-  const [vault, _bump]    = deriveVaultPDA(owner);
+  const [vault]           = deriveVaultPDA(owner);
   const vaultToken        = await getVaultTokenAccount(vault);
   const ownerToken        = await getAssociatedTokenAddress(USDC_MINT, owner);
 

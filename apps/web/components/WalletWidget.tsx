@@ -144,7 +144,7 @@ function useWalletEnv() {
   const [env, setEnv] = useState<"desktop" | "phantom-browser" | "mobile-pwa" | "mobile-browser">("desktop");
   useEffect(() => {
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    const isPhantomBrowser = !!(window as any).phantom?.solana;
+    const isPhantomBrowser = !!(window as Window & { phantom?: { solana?: unknown } }).phantom?.solana;
     const isPWA = window.matchMedia("(display-mode: standalone)").matches;
     if (isPhantomBrowser) setEnv("phantom-browser");
     else if (isMobile && isPWA) setEnv("mobile-pwa");

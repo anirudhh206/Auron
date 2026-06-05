@@ -649,7 +649,7 @@ function CompleteStep() {
 
       <div>
         <p style={{ fontFamily: "'Instrument Serif',serif", fontSize: 28, color: C.text, margin: 0 }}>
-          You're All Set
+          You&apos;re All Set
         </p>
         <p style={{ fontFamily: "'Geist Mono',monospace", fontSize: 11, color: C.dim, margin: "8px 0 0", letterSpacing: "0.04em" }}>
           Your Auron account is ready.

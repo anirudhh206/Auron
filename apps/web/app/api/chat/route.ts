@@ -215,9 +215,9 @@ export async function POST(req: NextRequest) {
             if (event.type === "message_stop") {
               // Log cache performance
               if ("cache_read_input_tokens" in event) {
-                const e = event as any;
-                if (e.cache_read_input_tokens > 0) {
-                  console.log(`[Cache HIT] Read: ${e.cache_read_input_tokens} tokens`);
+                const cacheEv = event as { cache_read_input_tokens?: number };
+                if ((cacheEv.cache_read_input_tokens ?? 0) > 0) {
+                  console.log(`[Cache HIT] Read: ${cacheEv.cache_read_input_tokens} tokens`);
                 }
               }
 
@@ -237,7 +237,7 @@ export async function POST(req: NextRequest) {
 
                 try {
                   actionJson = JSON.parse(jsonStr);
-                } catch (e) {
+                } catch {
                   console.error("[chat] JSON parse error:", jsonStr.slice(0, 200));
                 }
               } else {

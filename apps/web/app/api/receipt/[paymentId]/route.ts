@@ -21,7 +21,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { getTransactionWithSettlement, getStatusHistory } from "@/lib/db/ledger";
+import { getTransactionWithSettlement } from "@/lib/db/ledger";
 import { generateReceiptHash } from "@/lib/payment-state";
 import type { PaymentRecord } from "@/lib/payment-state";
 

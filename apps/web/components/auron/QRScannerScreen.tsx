@@ -84,7 +84,7 @@ export default function QRScannerScreen({ onScanned, onBack }: QRScannerScreenPr
       const controls = await reader.decodeFromVideoDevice(
         undefined,          // undefined = environment-facing camera
         videoRef.current,
-        (result, _err) => {
+        (result, _scanErr) => {
           if (result) {
             const text = result.getText();
             const parsed = parseUPIQR(text);

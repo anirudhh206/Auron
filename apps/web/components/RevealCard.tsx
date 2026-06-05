@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { CheckCircle2, ExternalLink, Copy, Check, X, Share2 } from "lucide-react";
 import { getTxExplorerUrl } from "@/lib/solana";
 import confetti from "canvas-confetti";
@@ -22,7 +22,6 @@ const C = {
 
 interface RevealCardProps {
   txHash: string;
-  confirmText: string;
   onClose: () => void;
   merchantName?: string;
   inrAmount?: number;
@@ -133,7 +132,7 @@ const STYLES = `
 `;
 
 export default function RevealCard({
-  txHash, confirmText, onClose,
+  txHash, onClose,
   merchantName, inrAmount, usdcAmount, utrNumber, network = "Solana",
 }: RevealCardProps) {
   const [visible, setVisible] = useState(false);

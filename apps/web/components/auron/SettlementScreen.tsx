@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface SettlementStep {
@@ -11,14 +11,12 @@ interface SettlementStep {
 }
 
 interface SettlementScreenProps {
-  merchant: string;
-  inrAmount: number;
-  usdcAmount: number;
-  fxRate?: number;
-  txSignature?: string;
-  paymentId?: string;
-  onComplete: (utr: string) => void;
-  isDemo?: boolean;
+  merchant:     string;
+  inrAmount:    number;
+  usdcAmount:   number;
+  fxRate?:      number;
+  txSignature?: string;  // shown in footer as on-chain proof
+  onComplete:   (utr: string) => void;
 }
 
 const C = {
@@ -199,9 +197,10 @@ const STYLES = `
 `;
 
 export default function SettlementScreen({
-  merchant, inrAmount, usdcAmount, fxRate = 84.00, txSignature, paymentId, onComplete, isDemo = false,
+  merchant, inrAmount, usdcAmount, fxRate = 84.00, txSignature, onComplete,
 }: SettlementScreenProps) {
-  const STEPS = buildSteps(fxRate);
+  // useMemo so STEPS aren't re-created on every render
+  const STEPS = useMemo(() => buildSteps(fxRate), [fxRate]);
   const [completedCount, setCompletedCount] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const [utr] = useState(generateUTR);
@@ -217,7 +216,7 @@ export default function SettlementScreen({
     if (count === STEPS.length) {
       setTimeout(() => onComplete(utr), 400);
     }
-  }, [elapsed, onComplete, utr]);
+  }, [elapsed, STEPS, onComplete, utr]);
 
   const activeIdx = completedCount;
   const glowSize = Math.min(completedCount * 60, 300);

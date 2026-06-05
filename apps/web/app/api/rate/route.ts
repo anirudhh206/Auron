@@ -2,7 +2,7 @@
  * GET /api/rate
  *
  * Returns the live USDC/INR exchange rate from CoinGecko.
- * Auron's rate = market rate minus our 0.7% spread (how we earn revenue).
+ * Auron's rate = market rate minus our spread (default 0.85%) — how we earn revenue.
  *
  * Cached for 60 seconds — rate doesn't need to be real-time for payments.
  * Falls back to hardcoded rate if CoinGecko is unreachable.
@@ -19,8 +19,11 @@ interface RateCache {
 
 let cache: RateCache | null = null;
 const CACHE_TTL_MS = 60_000;
-// Spread and fallback driven by env vars — never hardcoded
-const AURON_SPREAD         = parseFloat(process.env.AURON_SPREAD_PERCENT  ?? "0.0085");
+// Spread and fallback driven by env vars — never hardcoded.
+// AURON_SPREAD_PERCENT is stored as a percent (e.g. "0.85" = 0.85%).
+// Must match lib/quote.ts which uses the same convention.
+const AURON_SPREAD_PCT     = parseFloat(process.env.AURON_SPREAD_PERCENT  ?? "0.85");
+const AURON_SPREAD         = AURON_SPREAD_PCT / 100;      // 0.85 → 0.0085
 const FALLBACK_MARKET_RATE = parseFloat(process.env.FALLBACK_FX_RATE_INR  ?? "84.00");
 
 export async function GET(): Promise<NextResponse> {
@@ -51,8 +54,6 @@ export async function GET(): Promise<NextResponse> {
     }
 
     cache = { marketRate, fetchedAt: Date.now() };
-    console.log(`[rate] fetched USDC/INR=${marketRate}`);
-
     return NextResponse.json(buildResponse(marketRate, false));
 
   } catch (err: unknown) {
@@ -74,7 +75,7 @@ function buildResponse(marketRate: number, cached: boolean) {
     marketRate,
     auronRate,          // what user pays: slightly below market (Auron keeps spread)
     spread: AURON_SPREAD,
-    spreadPercent: `${(AURON_SPREAD * 100).toFixed(2)}%`,
+    spreadPercent: `${AURON_SPREAD_PCT.toFixed(2)}%`,
     cachedAt: cache?.fetchedAt ?? Date.now(),
     cached,
     // Convenience: how many USDC for ₹1000 at Auron rate

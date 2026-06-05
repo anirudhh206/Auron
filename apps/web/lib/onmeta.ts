@@ -42,7 +42,6 @@ export async function initiateOnMetaPayout(
 
   // ── No API key = sandbox/demo mode ───────────────────────────────────────
   if (!apiKey || apiKey === "demo") {
-    console.log("[OnMeta DEMO] Simulating payout:", req);
     await new Promise(r => setTimeout(r, 800)); // simulate network delay
     return {
       success: true,
@@ -71,14 +70,20 @@ export async function initiateOnMetaPayout(
   });
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(`OnMeta API error: ${(err as any).message ?? res.statusText}`);
+    const err = await res.json().catch(() => ({})) as { message?: string };
+    throw new Error(`OnMeta API error: ${err.message ?? res.statusText}`);
   }
 
-  const data = await res.json() as any;
+  const data = await res.json() as {
+    payout_id?: string;
+    id?: string;
+    status?: "pending" | "processing" | "completed" | "failed";
+    utr?: string;
+    estimated_delivery?: string;
+  };
   return {
     success: true,
-    payoutId: data.payout_id ?? data.id,
+    payoutId: data.payout_id ?? data.id ?? "",
     status: data.status ?? "processing",
     utrNumber: data.utr,
     estimatedDelivery: data.estimated_delivery ?? "10–30 seconds",

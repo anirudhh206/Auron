@@ -2,6 +2,12 @@
 
 type PushPlugin = typeof import("@capacitor/push-notifications").PushNotifications;
 
+// Capacitor local-notifications scheduling API (subset we use)
+interface CapacitorLocalScheduler {
+  createChannel?: (opts: { id: string; name: string; importance: number; sound: string; vibration: boolean }) => Promise<void>;
+  schedule?:      (opts: { notifications: Array<{ id: number; title: string; body: string; channelId: string; schedule: { at: Date } }> }) => Promise<void>;
+}
+
 let _push: PushPlugin | null = null;
 
 /** Lazy-load the Capacitor plugin only in native context */
@@ -58,8 +64,9 @@ export async function notifyTxSuccess(action: string, detail: string): Promise<v
   const push = await getPush();
   if (!push) return;
 
+  const scheduler = push as unknown as CapacitorLocalScheduler;
   try {
-    await (push as any).createChannel?.({
+    await scheduler.createChannel?.({
       id: "auron-tx",
       name: "Transactions",
       importance: 4, // HIGH
@@ -67,7 +74,7 @@ export async function notifyTxSuccess(action: string, detail: string): Promise<v
       vibration: true,
     });
 
-    await (push as any).schedule?.({
+    await scheduler.schedule?.({
       notifications: [
         {
           id: Date.now(),
@@ -88,8 +95,9 @@ export async function notifyTxFailed(action: string, reason: string): Promise<vo
   const push = await getPush();
   if (!push) return;
 
+  const scheduler = push as unknown as CapacitorLocalScheduler;
   try {
-    await (push as any).schedule?.({
+    await scheduler.schedule?.({
       notifications: [
         {
           id: Date.now(),

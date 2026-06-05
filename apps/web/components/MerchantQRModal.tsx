@@ -7,7 +7,7 @@ import { X, Copy, CheckCircle2, Share2 } from "lucide-react";
 import AuronLogo from "@/components/AuronLogo";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
-import { USDC_MINT, shortAddr } from "@/lib/solana";
+import { USDC_MINT } from "@/lib/solana";
 import type { User } from "@supabase/supabase-js";
 
 const C = {

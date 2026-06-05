@@ -29,12 +29,24 @@ export const RPC_ENDPOINT =
     ? "https://api.mainnet-beta.solana.com"
     : "https://api.devnet.solana.com");
 
+// Singleton connection — reuse across calls to avoid creating a new WebSocket
+// on every transaction build (costly on mobile, can exhaust RPC limits on devnet).
+let _connection: Connection | null = null;
+
 export function getConnection(): Connection {
-  return new Connection(RPC_ENDPOINT, {
-    commitment: "confirmed",
-    confirmTransactionInitialTimeout: 120_000, // 2 min — devnet public RPC can be slow
-    disableRetryOnRateLimit: false,
-  });
+  if (!_connection) {
+    _connection = new Connection(RPC_ENDPOINT, {
+      commitment: "confirmed",
+      confirmTransactionInitialTimeout: 120_000, // 2 min — devnet public RPC can be slow
+      disableRetryOnRateLimit: false,
+    });
+  }
+  return _connection;
+}
+
+/** Force a fresh connection (useful after RPC URL env var changes in development). */
+export function resetConnection(): void {
+  _connection = null;
 }
 
 // ─── Token addresses ───────────────────────────────────────────────────────

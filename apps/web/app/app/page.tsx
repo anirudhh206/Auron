@@ -103,6 +103,13 @@ export default function AppPage() {
   // the API returned (or the generated fallback if still pending).
   const realReceiptRef = useRef<ReceiptData | null>(null);
 
+  // On-chain signature stored here as soon as Phantom confirms so it can be
+  // passed to SettlementScreen for the proof-of-tx footer.
+  const confirmedSigRef = useRef<string | null>(null);
+
+  // Active payment ID — used to retrieve the real audit trail for ReceiptScreen.
+  const settledPaymentIdRef = useRef<string | null>(null);
+
   const chatRef = useRef<ChatInterfaceHandle>(null);
   const router  = useRouter();
   const supabase = createClient();
@@ -153,7 +160,6 @@ export default function AppPage() {
     const idempotencyKey = `${paymentId}-v1`;
     const fxRate         = intent.fxRate;
 
-    // 1. Create local payment record (persisted in localStorage)
     const record = createPaymentRecord({
       inrAmount:     intent.inrAmount,
       usdcAmount:    intent.usdcAmount,
@@ -171,11 +177,11 @@ export default function AppPage() {
 
     let signature: string;
 
-    // 2. Build & sign Solana USDC tx
     if (IS_DEMO || !publicKey) {
-      // Demo mode — generate stub signature then immediately start settlement UI
       signature = `demo_${paymentId.slice(0, 8)}_${Date.now()}`;
       transition(paymentId, "tx_confirmed", "Demo mode — skipping on-chain transfer");
+      settledPaymentIdRef.current = paymentId;
+      // No real sig in demo mode — confirmedSigRef stays null
       onTxConfirmed?.();
     } else {
       try {
@@ -184,8 +190,6 @@ export default function AppPage() {
         const conn = getConnection();
 
         transition(paymentId, "awaiting_signature", "Waiting for Phantom signature");
-        // skipPreflight: Phantom already simulated — skip the RPC re-simulation
-        // that can fail on devnet due to rate limits / stale blockhash
         const sig = await sendTransaction(tx, conn, {
           skipPreflight: true,
           maxRetries: 3,
@@ -197,6 +201,8 @@ export default function AppPage() {
         const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash();
         await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
         transition(paymentId, "tx_confirmed", "On-chain USDC transfer confirmed");
+        confirmedSigRef.current = sig;
+        settledPaymentIdRef.current = paymentId;
 
         // TX is on-chain — NOW trigger the settlement animation
         onTxConfirmed?.();
@@ -342,7 +348,9 @@ export default function AppPage() {
     setPayError(null);
     setQrPrefill(undefined);
     setQrMerchantData(null);
-    realReceiptRef.current = null;
+    realReceiptRef.current      = null;
+    confirmedSigRef.current     = null;
+    settledPaymentIdRef.current = null;
     setMobileTab("home");
   }
 
@@ -385,6 +393,19 @@ export default function AppPage() {
           receiptHash={receiptData.receiptHash || undefined}
           solscanUrl={receiptData.solscanUrl || undefined}
           settledAt={receiptData.settledAt}
+          auditTrail={
+            // Build audit trail from the real payment events for this session.
+            // Falls back to the ReceiptScreen default if events are unavailable.
+            settledPaymentIdRef.current
+              ? (getPayment(settledPaymentIdRef.current)?.events ?? [])
+                  .map((ev, i, arr) => ({
+                    label: ev.message,
+                    timestamp: i === 0
+                      ? "T+0.0s"
+                      : `T+${((ev.timestamp - arr[0].timestamp) / 1000).toFixed(1)}s`,
+                  }))
+              : undefined
+          }
           onDone={resetPaymentFlow}
         />
       ) : settling && pendingIntent ? (
@@ -393,6 +414,7 @@ export default function AppPage() {
           inrAmount={pendingIntent.inrAmount}
           usdcAmount={pendingIntent.usdcAmount}
           fxRate={pendingIntent.fxRate}
+          txSignature={confirmedSigRef.current ?? undefined}
           onComplete={(generatedUtr) => {
             // Use real receipt data if available, else use generated UTR
             const real = realReceiptRef.current;

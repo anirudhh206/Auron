@@ -38,6 +38,7 @@ import { runPreflightChecks } from "@/lib/preflight";
 import { useLiveRate } from "@/lib/useLiveRate";
 import { useStore, ChatMessage } from "@/store/useStore";
 import type { ParsedAction } from "@/lib/claude";
+import type { SecurityFlag } from "@/lib/security";
 import { cn, formatTimestamp } from "@/lib/utils";
 import ConfirmCard from "./ConfirmCard";
 import RevealCard from "./RevealCard";
@@ -162,7 +163,8 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
 
     // ── Resume UPI payment post-signature flow ────────────────────────────
     void resumeUPIAfterMobileSign(signature, paymentContext);
-  }, []); // intentionally run once on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally run once on mount — deps are stable refs/callbacks
 
   function toggleVoice() {
     if (!("webkitSpeechRecognition" in globalThis || "SpeechRecognition" in globalThis)) {
@@ -170,7 +172,9 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
       return;
     }
     if (isListening) { recognitionRef.current?.stop(); setListening(false); return; }
-    const SR = (globalThis as any).SpeechRecognition ?? (globalThis as any).webkitSpeechRecognition;
+    const g = globalThis as typeof globalThis & { SpeechRecognition?: new () => SpeechRecognition; webkitSpeechRecognition?: new () => SpeechRecognition };
+    const SR = g.SpeechRecognition ?? g.webkitSpeechRecognition;
+    if (!SR) return;
     const r = new SR() as SpeechRecognition;
     r.lang = "en-IN";
     r.interimResults = false;
@@ -340,7 +344,7 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
               setPendingTx({
                 action: resolvedAction,
                 confirmText: resolvedConfirmText,
-                securityFlags: (event.securityFlags as any[]) ?? [],
+                securityFlags: (event.securityFlags as SecurityFlag[]) ?? [],
                 requiresSlowdown: Boolean(event.requiresSlowdown),
               });
             }
@@ -371,7 +375,7 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
   }, [input, isLoading, isConnected, address, messages, prefs, dailySpent, addMessage, setLoading, setPendingTx]);
 
   // ── Build Solana transaction from parsed action ────────────────────────
-  async function buildTxResult(action: any, confirmText: string): Promise<BuildResult> {
+  async function buildTxResult(action: ParsedAction, confirmText: string): Promise<BuildResult> {
     if (!address) throw new Error("Wallet not connected");
 
     switch (action.action) {
@@ -1226,7 +1230,7 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
   const isEmpty = messages.length === 0;
 
   // Network mismatch: wallet connected but on wrong Solana network
-  const showNetworkWarning = isConnected && NETWORK === "mainnet-beta" &&
+  const _showNetworkWarning = isConnected && NETWORK === "mainnet-beta" &&
     typeof window !== "undefined" &&
     // Detect if Phantom is likely on devnet (window.solana cluster hint)
     (window as unknown as Record<string, { isPhantom?: boolean }>).solana?.isPhantom === true;
@@ -1572,7 +1576,6 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
         {completedTx && (
           <RevealCard
             txHash={completedTx.txHash}
-            confirmText={completedTx.confirmText}
             onClose={() => setCompletedTx(null)}
           />
         )}
@@ -1642,7 +1645,7 @@ const ChatInterface = forwardRef<ChatInterfaceHandle, object>(function ChatInter
 export default ChatInterface;
 
 // ── Message bubble ────────────────────────────────────────────────
-function MessageBubble({ message, index }: { readonly message: ChatMessage; readonly index: number }) {
+function MessageBubble({ message, index: _index }: { readonly message: ChatMessage; readonly index: number }) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { X, ExternalLink, CheckCircle2, Clock, AlertCircle, Inbox, RefreshCcw } from "lucide-react";
 import { usePaymentStore } from "@/store/usePaymentStore";
 import { PaymentRecord } from "@/lib/payment-state";

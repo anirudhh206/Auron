@@ -336,6 +336,28 @@ export default function ReceiptScreen({
 
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <p style={{ fontFamily: "'Geist Mono',monospace", fontSize: 10, color: C.dim, letterSpacing: "0.1em", margin: 0 }}>
+                UPI ID
+              </p>
+              <p style={{ fontFamily: "'Geist Mono',monospace", fontSize: 11, color: C.muted, margin: 0, overflow: "hidden", textOverflow: "ellipsis", maxWidth: "60%" }}>
+                {upiId}
+              </p>
+            </div>
+
+            <div className="utr-divider" />
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <p style={{ fontFamily: "'Geist Mono',monospace", fontSize: 10, color: C.dim, letterSpacing: "0.1em", margin: 0 }}>
+                PAID
+              </p>
+              <p style={{ fontFamily: "'Geist Mono',monospace", fontSize: 11, color: C.usdc, margin: 0 }}>
+                {usdcAmount.toFixed(2)} USDC
+              </p>
+            </div>
+
+            <div className="utr-divider" />
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <p style={{ fontFamily: "'Geist Mono',monospace", fontSize: 10, color: C.dim, letterSpacing: "0.1em", margin: 0 }}>
                 SETTLED AT
               </p>
               <p style={{ fontFamily: "'Geist Mono',monospace", fontSize: 11, color: C.muted, margin: 0 }}>

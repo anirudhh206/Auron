@@ -3,7 +3,7 @@
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { ShieldCheck, FileText, Clock, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { ShieldCheck, FileText, Clock, XCircle, Loader2 } from "lucide-react";
 
 type Step = "intro" | "submitting" | "pending" | "rejected";
 

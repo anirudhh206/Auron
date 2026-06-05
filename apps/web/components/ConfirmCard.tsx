@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import type { ParsedAction } from "@/lib/claude";
 import type { SecurityFlag } from "@/lib/security";

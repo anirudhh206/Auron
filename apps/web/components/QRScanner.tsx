@@ -290,7 +290,6 @@ export default function QRScanner({ onScan, onClose }: QRScannerProps) {
 
   // ── Solana computed values ───────────────────────────────────────────────────
   const solanaData = scanned?.type === "solana" ? scanned.data : null;
-  const solanaLabel = solanaData?.label || (solanaData ? shortAddr(solanaData.recipient) : null);
   const solanaDisplayAmount = solanaData?.amount
     ? `${solanaData.amount} ${solanaData.splToken ? "USDC" : "SOL"}`
     : null;

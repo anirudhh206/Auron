@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import type { User as SupabaseUser } from "@supabase/supabase-js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Transaction {
@@ -365,7 +364,7 @@ export default function DashboardScreen({
   const txs = recentTransactions ?? [];
   const inrEquiv = (usdcBalance * fxRate).toLocaleString("en-IN", { maximumFractionDigits: 2 });
 
-  const [rateAge, setRateAge] = useState(12);
+  const [rateAge, setRateAge] = useState(0);
   useEffect(() => {
     const t = setInterval(() => setRateAge(a => a + 1), 1000);
     return () => clearInterval(t);
@@ -412,7 +411,7 @@ export default function DashboardScreen({
               ≈ ₹{isConnected ? inrEquiv : "—"}
             </div>
             <div className="dash-balance-sol">
-              {address ? "0.024 SOL for fees" : "Connect wallet to view balance"}
+              {address ? "Keep ≥ 0.001 SOL for network fees" : "Connect wallet to view balance"}
             </div>
           </motion.section>
 
@@ -485,6 +484,7 @@ export default function DashboardScreen({
                   <div className="dash-tx-left">
                     <div className="dash-tx-avatar">
                       {tx.logoUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
                         <img src={tx.logoUrl} alt={tx.merchant} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                       ) : (
                         tx.initials

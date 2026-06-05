@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 
 interface ConfirmCardProps {
   merchant: string;
@@ -262,8 +262,19 @@ export default function ConfirmCard({
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const t = setInterval(() => setTimeLeft(n => Math.max(0, n - 1)), 1000);
+    const t = setInterval(() => {
+      setTimeLeft(n => {
+        if (n <= 1) {
+          // Quote expired — auto-dismiss after a brief pause so the user sees "0s"
+          setTimeout(onCancel, 800);
+          return 0;
+        }
+        return n - 1;
+      });
+    }, 1000);
     return () => clearInterval(t);
+  // onCancel identity is stable (arrow in parent) — intentional single-run
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const tick = useCallback(() => {
@@ -295,6 +306,7 @@ export default function ConfirmCard({
     setHoldProgress(0);
   }, [done]);
 
+  const expired = timeLeft === 0;
   const dashOffset = CIRC * (1 - holdProgress);
   const expiryScale = timeLeft / quoteExpiresIn;
 
@@ -335,8 +347,8 @@ export default function ConfirmCard({
               <div className="expiry-track">
                 <div className="expiry-fill" style={{ transform: `scaleX(${expiryScale})` }} />
               </div>
-              <p style={{ fontFamily: "'Geist Mono',monospace", fontSize: 10, color: C.dim, textAlign: "right", letterSpacing: "0.06em" }}>
-                Rate expires in {timeLeft}s
+              <p style={{ fontFamily: "'Geist Mono',monospace", fontSize: 10, color: expired ? "#EF4444" : C.dim, textAlign: "right", letterSpacing: "0.06em", transition: "color 0.3s" }}>
+                {expired ? "Quote expired — dismissing…" : `Rate expires in ${timeLeft}s`}
               </p>
             </div>
 
@@ -362,6 +374,7 @@ export default function ConfirmCard({
             <div className="hold-container">
               <div
                 className="hold-button"
+                style={{ opacity: expired ? 0.35 : 1, pointerEvents: expired ? "none" : "auto", transition: "opacity 0.3s" }}
                 onMouseDown={startHold}
                 onMouseUp={stopHold}
                 onMouseLeave={stopHold}

@@ -5,7 +5,7 @@ import {
   Keypair,
   PublicKey,
 } from "@solana/web3.js";
-import { getConnection, USDC_MINT, isValidSolanaAddress } from "@/lib/solana";
+import { getConnection, isValidSolanaAddress } from "@/lib/solana";
 import { buildUSDCTransferTx } from "@/lib/solana";
 import bs58 from "bs58";
 

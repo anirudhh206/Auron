@@ -1,6 +1,6 @@
-import { Connection, PublicKey, VersionedTransaction } from "@solana/web3.js";
+import { PublicKey, VersionedTransaction } from "@solana/web3.js";
 import { getAssociatedTokenAddress, TOKEN_PROGRAM_ID } from "@solana/spl-token";
-import { USDC_MINT, FEE_WALLET, PLATFORM_FEE_BPS, NETWORK } from "./solana";
+import { USDC_MINT, FEE_WALLET, PLATFORM_FEE_BPS } from "./solana";
 
 // ─── Jupiter API config ────────────────────────────────────────────────────
 const JUPITER_API = "https://api.jup.ag/swap/v1";

@@ -169,6 +169,7 @@ export default function BlinkPage() {
                 {/* Action icon + title */}
                 <div className="relative">
                   <div className="w-full h-36 bg-gradient-to-br from-[#9945FF]/20 to-[#14F195]/10 flex items-center justify-center">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={metadata.icon}
                       alt="Auron"
