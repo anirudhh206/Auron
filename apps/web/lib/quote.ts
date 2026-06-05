@@ -110,17 +110,21 @@ export async function getLiveRate(): Promise<LiveRate> {
       throw new Error(`Rate out of range: ${marketRate}`);
     }
 
-    const spread    = parseFloat(process.env.AURON_SPREAD_PERCENT ?? "0.0085");
+    // AURON_SPREAD_PERCENT is always stored as a percentage (e.g. "0.85" = 0.85%)
+    // Divide by 100 to get the decimal multiplier — same convention as buildQuote().
+    const spreadPct = parseFloat(process.env.AURON_SPREAD_PERCENT ?? "0.85");
+    const spread    = spreadPct / 100;
     const auronRate = parseFloat((marketRate * (1 - spread)).toFixed(2));
-    const rate: LiveRate = { marketRate, auronRate, spreadPercent: spread * 100, fallback: false };
+    const rate: LiveRate = { marketRate, auronRate, spreadPercent: spreadPct, fallback: false };
 
     _rateCache = { rate, fetchedAt: Date.now() };
     return rate;
 
   } catch {
     const marketRate = parseFloat(process.env.FALLBACK_FX_RATE_INR ?? "84.00");
-    const spread     = parseFloat(process.env.AURON_SPREAD_PERCENT ?? "0.0085");
+    const spreadPct  = parseFloat(process.env.AURON_SPREAD_PERCENT ?? "0.85");
+    const spread     = spreadPct / 100;
     const auronRate  = parseFloat((marketRate * (1 - spread)).toFixed(2));
-    return { marketRate, auronRate, spreadPercent: spread * 100, fallback: true };
+    return { marketRate, auronRate, spreadPercent: spreadPct, fallback: true };
   }
 }

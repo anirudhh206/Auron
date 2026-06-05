@@ -119,15 +119,15 @@ function useScrollReveal(threshold = 0.15) {
     obs.observe(el);
     return () => obs.disconnect();
   }, [threshold]);
-  return [ref, visible];
+  return [ref, visible] as const;
 }
 
-function useCounter(target, duration, active, decimals = 0) {
+function useCounter(target: number, duration: number, active: boolean, decimals = 0) {
   const [val, setVal] = useState(0);
   useEffect(() => {
     if (!active) return;
     const start = performance.now();
-    const tick = (now) => {
+    const tick = (now: number) => {
       const p = Math.min((now - start) / duration, 1);
       const eased = 1 - Math.pow(1 - p, 3);
       setVal(parseFloat((eased * target).toFixed(decimals)));
@@ -138,7 +138,7 @@ function useCounter(target, duration, active, decimals = 0) {
   return val;
 }
 
-function Nav({ scrolled }) {
+function Nav({ scrolled }: { scrolled: boolean }) {
   return (
     <nav style={{
       position: "fixed", top: 0, width: "100%", zIndex: 50, height: 64,
@@ -221,7 +221,7 @@ function HeroStats() {
 function Hero() {
   const [loaded, setLoaded] = useState(false);
   useEffect(() => { setTimeout(() => setLoaded(true), 80); }, []);
-  const delay = (d) => ({
+  const delay = (d: number) => ({
     opacity: loaded ? 1 : 0,
     transform: loaded ? "translateY(0)" : "translateY(24px)",
     transition: `opacity 0.7s cubic-bezier(0.16,1,0.3,1) ${d}ms, transform 0.7s cubic-bezier(0.16,1,0.3,1) ${d}ms`,

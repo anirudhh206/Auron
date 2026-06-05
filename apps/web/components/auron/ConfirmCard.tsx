@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
 interface ConfirmCardProps {
   merchant: string;
   upiId: string;
@@ -135,9 +134,7 @@ const STYLES = `
     margin-top: 8px;
   }
 
-  .expiry-wrap {
-    margin-bottom: 20px;
-  }
+  .expiry-wrap { margin-bottom: 20px; }
   .expiry-track {
     height: 2px;
     background: ${C.border};
@@ -252,17 +249,9 @@ const RADIUS = 34;
 const CIRC = 2 * Math.PI * RADIUS;
 
 export default function ConfirmCard({
-  merchant,
-  upiId,
-  inrAmount,
-  usdcAmount,
-  fxRate,
-  settlementPath = "OnMeta A",
-  fee = "0.5%",
-  estTime = "~20s",
-  quoteExpiresIn = 60,
-  onConfirm,
-  onCancel,
+  merchant, upiId, inrAmount, usdcAmount, fxRate,
+  settlementPath = "OnMeta A", fee = "0.5%", estTime = "~20s",
+  quoteExpiresIn = 60, onConfirm, onCancel,
 }: ConfirmCardProps) {
   const [holdProgress, setHoldProgress] = useState(0);
   const [holding, setHolding] = useState(false);
@@ -344,10 +333,7 @@ export default function ConfirmCard({
 
             <div className="expiry-wrap">
               <div className="expiry-track">
-                <div
-                  className="expiry-fill"
-                  style={{ transform: `scaleX(${expiryScale})` }}
-                />
+                <div className="expiry-fill" style={{ transform: `scaleX(${expiryScale})` }} />
               </div>
               <p style={{ fontFamily: "'Geist Mono',monospace", fontSize: 10, color: C.dim, textAlign: "right", letterSpacing: "0.06em" }}>
                 Rate expires in {timeLeft}s
@@ -414,7 +400,6 @@ export default function ConfirmCard({
 
               <button className="cancel-link" onClick={onCancel}>Cancel</button>
             </div>
-
           </div>
         </motion.div>
       </div>

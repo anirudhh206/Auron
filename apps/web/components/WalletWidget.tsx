@@ -5,36 +5,154 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { useQuery } from "@tanstack/react-query";
 import { Wallet, ChevronDown, Copy, ExternalLink, Check, LogOut, X, ArrowRight, Smartphone } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { shortAddr, getSOLBalance, getUSDCBalance } from "@/lib/solana";
-import {
-  buildPhantomConnectUrl,
-  parsePhantomConnectResponse,
-  storeConnectedWallet,
-  getStoredWallet,
-  clearStoredWallet,
-} from "@/lib/phantomMobile";
+import { buildPhantomConnectUrl, parsePhantomConnectResponse, storeConnectedWallet, getStoredWallet, clearStoredWallet } from "@/lib/phantomMobile";
 
-// ─── Environment detection ────────────────────────────────────────────────────
+const C = {
+  bg:     "#08080A",
+  s1:     "#0F0F12",
+  s2:     "#161619",
+  border: "#26262A",
+  borderB:"#3A3A3F",
+  text:   "#F5F5F0",
+  muted:  "#9A9AA8",
+  dim:    "#606068",
+  lime:   "#C8F135",
+  usdc:   "#2775CA",
+};
+
+const STYLES = `
+  @import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
+
+  .ww-connect-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 10px;
+    background: ${C.lime};
+    border: none;
+    font-family: 'Geist', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    color: #0A0A08;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+  }
+  .ww-connect-btn:hover { background: #A3C42A; }
+  .ww-connect-btn:active { transform: scale(0.97); }
+
+  .ww-wallet-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    border-radius: 10px;
+    background: ${C.s1};
+    border: 1px solid ${C.border};
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  .ww-wallet-btn:hover { border-color: ${C.borderB}; }
+
+  .ww-dropdown {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+    width: 240px;
+    border-radius: 14px;
+    background: ${C.s1};
+    border: 1px solid ${C.border};
+    overflow: hidden;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+    z-index: 50;
+  }
+
+  .ww-dropdown-header {
+    padding: 14px 16px;
+    border-bottom: 0.5px solid ${C.border};
+  }
+
+  .ww-dropdown-items {
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .ww-dropdown-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: transparent;
+    border: none;
+    font-family: 'Geist', sans-serif;
+    font-size: 13px;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.12s;
+  }
+  .ww-dropdown-item:hover { background: ${C.s2}; }
+  .ww-dropdown-item-danger { color: #EF4444; }
+  .ww-dropdown-item-accent { color: ${C.lime}; }
+  .ww-dropdown-item-default { color: ${C.muted}; }
+
+  /* Mobile modal */
+  .ww-mobile-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    background: rgba(0,0,0,0.75);
+    backdrop-filter: blur(8px);
+  }
+  .ww-mobile-sheet {
+    width: 100%;
+    max-width: 390px;
+    background: ${C.s1};
+    border-radius: 20px 20px 0 0;
+    border-top: 0.5px solid ${C.border};
+    padding: 24px 20px 32px;
+    font-family: 'Geist', sans-serif;
+  }
+  .ww-phantom-btn {
+    width: 100%;
+    padding: 14px;
+    border-radius: 12px;
+    background: ${C.lime};
+    border: none;
+    font-family: 'Geist', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: #0A0A08;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: background 0.15s;
+  }
+  .ww-phantom-btn:hover { background: #A3C42A; }
+`;
 
 function useWalletEnv() {
   const [env, setEnv] = useState<"desktop" | "phantom-browser" | "mobile-pwa" | "mobile-browser">("desktop");
-
   useEffect(() => {
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
     const isPhantomBrowser = !!(window as any).phantom?.solana;
     const isPWA = window.matchMedia("(display-mode: standalone)").matches;
-
     if (isPhantomBrowser) setEnv("phantom-browser");
     else if (isMobile && isPWA) setEnv("mobile-pwa");
     else if (isMobile) setEnv("mobile-browser");
     else setEnv("desktop");
   }, []);
-
   return env;
 }
-
-// ─── Phantom response handler — runs on every page load ──────────────────────
 
 function usePhantomDeepLinkResponse(onConnected: (pubKey: string) => void) {
   useEffect(() => {
@@ -42,34 +160,25 @@ function usePhantomDeepLinkResponse(onConnected: (pubKey: string) => void) {
     const params = new URLSearchParams(window.location.search);
     const result = parsePhantomConnectResponse(params);
     if (!result) return;
-
-    // Clean URL params — don't leave keys in the address bar
-    const clean = window.location.pathname;
-    window.history.replaceState({}, "", clean);
-
+    window.history.replaceState({}, "", window.location.pathname);
     storeConnectedWallet(result.publicKey);
     onConnected(result.publicKey);
   }, [onConnected]);
 }
-
-// ─── Main component ───────────────────────────────────────────────────────────
 
 export default function WalletWidget() {
   const { publicKey, connected, disconnect } = useWallet();
   const { setVisible } = useWalletModal();
   const env = useWalletEnv();
 
-  // For mobile deep-link connections (bypasses wallet adapter)
   const [mobileWallet, setMobileWallet] = useState<string | null>(null);
   const [showMobileModal, setShowMobileModal] = useState(false);
 
-  // On mount: restore previously connected mobile wallet
   useEffect(() => {
     const stored = getStoredWallet();
     if (stored) setMobileWallet(stored);
   }, []);
 
-  // Handle Phantom deep link redirect response
   usePhantomDeepLinkResponse((pubKey) => setMobileWallet(pubKey));
 
   const address = publicKey?.toString() ?? mobileWallet ?? null;
@@ -82,24 +191,17 @@ export default function WalletWidget() {
   const { data: solBalance = 0 } = useQuery({
     queryKey: ["sol-balance", address],
     queryFn: () => getSOLBalance(address!),
-    enabled: !!address,
-    refetchInterval: 30_000,
-    staleTime: 15_000,
+    enabled: !!address, refetchInterval: 30_000, staleTime: 15_000,
   });
-
   const { data: usdcBalance = 0 } = useQuery({
     queryKey: ["usdc-balance", address],
     queryFn: () => getUSDCBalance(address!),
-    enabled: !!address,
-    refetchInterval: 30_000,
-    staleTime: 15_000,
+    enabled: !!address, refetchInterval: 30_000, staleTime: 15_000,
   });
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
@@ -126,211 +228,138 @@ export default function WalletWidget() {
   }
 
   function handlePhantomDeepLink() {
-    // Build deep link with encrypted keypair stored in sessionStorage
-    const url = buildPhantomConnectUrl();
-    // Use location.href (not window.open) — required for deep links to work in PWA
-    window.location.href = url;
+    window.location.href = buildPhantomConnectUrl();
   }
 
-  // ── Not connected ──────────────────────────────────────────────────────────
   if (!isConnected) {
-    // In Phantom's browser: injected provider works, use normal modal
     if (env === "phantom-browser" || env === "desktop") {
       return (
-        <button
-          onClick={() => setVisible(true)}
-          className={cn(
-            "flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold",
-            "bg-violet-600 hover:bg-violet-500 text-white",
-            "transition-all duration-150 active:scale-95",
-            "animate-pulse-glow"
-          )}
-        >
-          <Wallet size={15} />
-          Connect Wallet
-        </button>
+        <>
+          <style>{STYLES}</style>
+          <button className="ww-connect-btn" onClick={() => setVisible(true)}>
+            <Wallet size={14} />
+            Connect Wallet
+          </button>
+        </>
       );
     }
-
-    // Mobile (PWA or browser): show modal explaining the flow
     return (
       <>
-        <button
-          onClick={() => setShowMobileModal(true)}
-          className={cn(
-            "flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold",
-            "bg-violet-600 hover:bg-violet-500 text-white",
-            "transition-all duration-150 active:scale-95"
-          )}
-        >
-          <Wallet size={15} />
+        <style>{STYLES}</style>
+        <button className="ww-connect-btn" onClick={() => setShowMobileModal(true)}>
+          <Wallet size={14} />
           Connect Wallet
         </button>
-
         {showMobileModal && (
-          <PhantomMobileModal
-            onClose={() => setShowMobileModal(false)}
-            onDeepLink={handlePhantomDeepLink}
-          />
+          <PhantomMobileModal onClose={() => setShowMobileModal(false)} onDeepLink={handlePhantomDeepLink} />
         )}
       </>
     );
   }
 
-  // ── Connected ──────────────────────────────────────────────────────────────
   return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className={cn(
-          "flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium",
-          "bg-[#161b27] border border-white/10 hover:border-white/20",
-          "text-white transition-all duration-150 active:scale-95"
-        )}
-      >
-        <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
-        <span className="flex flex-col items-start leading-none">
-          <span className="text-white font-semibold text-xs">{shortAddr(address!)}</span>
-          <span className="text-gray-400 text-[10px] mt-0.5">
-            {solBalance.toFixed(3)} SOL · {usdcBalance.toFixed(2)} USDC
+    <>
+      <style>{STYLES}</style>
+      <div ref={ref} style={{ position: "relative" }}>
+        <button className="ww-wallet-btn" onClick={() => setOpen((v) => !v)}>
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.lime, flexShrink: 0 }} />
+          <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 1 }}>
+            <span style={{ fontFamily: "'Geist Mono',monospace", fontSize: 12, fontWeight: 600, color: C.text }}>{shortAddr(address!)}</span>
+            <span style={{ fontFamily: "'Geist Mono',monospace", fontSize: 9, color: C.dim }}>
+              {solBalance.toFixed(3)} SOL · {usdcBalance.toFixed(2)} USDC
+            </span>
           </span>
-        </span>
-        <ChevronDown
-          size={14}
-          className={cn("text-gray-400 transition-transform duration-150", open && "rotate-180")}
-        />
-      </button>
-
-      {open && (
-        <div className={cn(
-          "absolute right-0 top-full mt-2 w-64 rounded-2xl z-50",
-          "bg-[#161b27] border border-white/10 shadow-2xl",
-          "animate-slide-up overflow-hidden"
-        )}>
-          <div className="px-4 py-3 border-b border-white/6">
-            <p className="text-white font-semibold text-sm font-mono">{shortAddr(address!)}</p>
-            <p className="text-gray-500 text-[10px] mt-0.5 font-mono truncate">{address}</p>
-            <div className="flex items-center gap-4 mt-2.5">
-              <div>
-                <p className="text-white text-sm font-bold">{solBalance.toFixed(4)}</p>
-                <p className="text-gray-500 text-[10px]">SOL</p>
-              </div>
-              <div className="w-px h-6 bg-white/8" />
-              <div>
-                <p className="text-white text-sm font-bold">{usdcBalance.toFixed(2)}</p>
-                <p className="text-gray-500 text-[10px]">USDC</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="p-2 space-y-0.5">
-            <DropdownItem icon={copied ? Check : Copy} label={copied ? "Copied!" : "Copy address"} onClick={copyAddress} accent={copied} />
-            <DropdownItem icon={ExternalLink} label="View on Solscan" onClick={openSolscan} />
-            <DropdownItem icon={LogOut} label="Disconnect" onClick={handleDisconnect} danger />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Phantom Mobile Modal ─────────────────────────────────────────────────────
-
-function PhantomMobileModal({
-  onClose,
-  onDeepLink,
-}: {
-  onClose: () => void;
-  onDeepLink: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div
-        className="w-full max-w-sm rounded-2xl p-6"
-        style={{
-          background: "#0F1117",
-          border: "1px solid rgba(255,255,255,0.08)",
-        }}
-      >
-        {/* Header */}
-        <div className="flex items-start justify-between mb-5">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-violet-500/15 border border-violet-500/30 flex items-center justify-center">
-              <Smartphone size={18} className="text-violet-400" />
-            </div>
-            <div>
-              <p className="text-white font-bold text-sm">Connect Phantom</p>
-              <p className="text-white/40 text-xs">Mobile wallet connection</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="text-white/30 hover:text-white/60 transition-colors p-1">
-            <X size={16} />
-          </button>
-        </div>
-
-        {/* Steps */}
-        <div className="space-y-3 mb-6">
-          {[
-            { n: "1", text: "Tap Connect below — Phantom will open" },
-            { n: "2", text: "Approve the connection in Phantom" },
-            { n: "3", text: "You'll return here automatically" },
-          ].map(({ n, text }) => (
-            <div key={n} className="flex items-center gap-3">
-              <span className="w-6 h-6 rounded-full bg-violet-500/20 text-violet-400 text-xs font-bold flex items-center justify-center shrink-0">
-                {n}
-              </span>
-              <span className="text-white/60 text-sm">{text}</span>
-            </div>
-          ))}
-        </div>
-
-        {/* Connect button */}
-        <button
-          onClick={onDeepLink}
-          className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl font-bold text-sm text-white transition-all active:scale-95"
-          style={{ background: "linear-gradient(135deg, #9945FF, #7c3aed)" }}
-        >
-          <Wallet size={16} />
-          Connect with Phantom
-          <ArrowRight size={14} />
+          <ChevronDown size={13} color={C.dim} style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform 0.15s" }} />
         </button>
 
-        <p className="text-center text-white/25 text-xs mt-3">
-          Phantom must be installed on your device
-        </p>
+        {open && (
+          <div className="ww-dropdown">
+            <div className="ww-dropdown-header">
+              <p style={{ fontFamily: "'Geist Mono',monospace", fontSize: 12, fontWeight: 600, color: C.text, margin: "0 0 2px" }}>{shortAddr(address!)}</p>
+              <p style={{ fontFamily: "'Geist Mono',monospace", fontSize: 9, color: C.dim, margin: "0 0 10px", overflow: "hidden", textOverflow: "ellipsis" }}>{address}</p>
+              <div style={{ display: "flex", gap: 20 }}>
+                <div>
+                  <p style={{ fontFamily: "'Geist Mono',monospace", fontSize: 13, fontWeight: 600, color: C.text, margin: 0 }}>{solBalance.toFixed(4)}</p>
+                  <p style={{ fontFamily: "'Geist Mono',monospace", fontSize: 9, color: C.dim, margin: 0 }}>SOL</p>
+                </div>
+                <div style={{ width: 1, background: C.border }} />
+                <div>
+                  <p style={{ fontFamily: "'Geist Mono',monospace", fontSize: 13, fontWeight: 600, color: C.usdc, margin: 0 }}>{usdcBalance.toFixed(2)}</p>
+                  <p style={{ fontFamily: "'Geist Mono',monospace", fontSize: 9, color: C.dim, margin: 0 }}>USDC</p>
+                </div>
+              </div>
+            </div>
+            <div className="ww-dropdown-items">
+              <WalletDropdownItem icon={copied ? Check : Copy} label={copied ? "Copied!" : "Copy address"} onClick={copyAddress} accent={copied} />
+              <WalletDropdownItem icon={ExternalLink} label="View on Solscan" onClick={openSolscan} />
+              <WalletDropdownItem icon={LogOut} label="Disconnect" onClick={handleDisconnect} danger />
+            </div>
+          </div>
+        )}
       </div>
-    </div>
+    </>
   );
 }
 
-// ─── Dropdown item ────────────────────────────────────────────────────────────
-
-function DropdownItem({
-  icon: Icon, label, onClick, accent = false, danger = false,
-}: {
-  readonly icon: ElementType;
-  readonly label: string;
-  readonly onClick: () => void;
-  readonly accent?: boolean;
-  readonly danger?: boolean;
-}) {
-  function colorClass(): string {
-    if (danger) return "text-red-400 hover:bg-red-950/60";
-    if (accent) return "text-emerald-400 hover:bg-emerald-950/40";
-    return "text-gray-300 hover:bg-white/6";
-  }
+function PhantomMobileModal({ onClose, onDeepLink }: { onClose: () => void; onDeepLink: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm",
-        "transition-colors duration-100",
-        colorClass()
-      )}
-    >
-      <Icon size={15} className="shrink-0" />
-      {label}
+    <>
+      <style>{STYLES}</style>
+      <div className="ww-mobile-overlay" onClick={onClose}>
+        <div className="ww-mobile-sheet" onClick={(e) => e.stopPropagation()}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(200,241,53,0.08)", border: "1px solid rgba(200,241,53,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <Smartphone size={18} color={C.lime} />
+              </div>
+              <div>
+                <p style={{ fontSize: 14, fontWeight: 600, color: C.text, margin: 0 }}>Connect Phantom</p>
+                <p style={{ fontFamily: "'Geist Mono',monospace", fontSize: 10, color: C.dim, margin: "2px 0 0" }}>Mobile wallet connection</p>
+              </div>
+            </div>
+            <button onClick={onClose} style={{ padding: 6, background: "none", border: "none", cursor: "pointer", color: C.dim }}>
+              <X size={15} />
+            </button>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 24 }}>
+            {[
+              { n: "1", text: "Tap Connect — Phantom will open" },
+              { n: "2", text: "Approve the connection in Phantom" },
+              { n: "3", text: "You'll return here automatically" },
+            ].map(({ n, text }) => (
+              <div key={n} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <span style={{ width: 24, height: 24, borderRadius: "50%", background: "rgba(200,241,53,0.08)", border: "1px solid rgba(200,241,53,0.15)", fontSize: 11, fontWeight: 700, color: C.lime, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  {n}
+                </span>
+                <span style={{ fontSize: 13, color: C.muted }}>{text}</span>
+              </div>
+            ))}
+          </div>
+
+          <button className="ww-phantom-btn" onClick={onDeepLink}>
+            <Wallet size={15} />
+            Connect with Phantom
+            <ArrowRight size={14} />
+          </button>
+          <p style={{ fontFamily: "'Geist Mono',monospace", fontSize: 10, color: C.dim, textAlign: "center", marginTop: 12 }}>
+            Phantom must be installed on your device
+          </p>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function WalletDropdownItem({ icon: Icon, label, onClick, accent = false, danger = false }: {
+  readonly icon: ElementType; readonly label: string; readonly onClick: () => void;
+  readonly accent?: boolean; readonly danger?: boolean;
+}) {
+  const color = danger ? "#EF4444" : accent ? C.lime : C.muted;
+  return (
+    <button type="button" onClick={onClick} className={`ww-dropdown-item ${danger ? "ww-dropdown-item-danger" : accent ? "ww-dropdown-item-accent" : "ww-dropdown-item-default"}`}>
+      <Icon size={14} color={color} style={{ flexShrink: 0 }} />
+      <span style={{ color }}>{label}</span>
     </button>
   );
 }

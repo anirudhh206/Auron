@@ -3,20 +3,19 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
+// ─── Types ────────────────────────────────────────────────────────────────────
 interface SettlementStep {
   id: string;
   label: string;
   sub: string;
-  duration: number;
+  duration: number; // ms until this step completes
 }
 
 interface SettlementScreenProps {
   merchant: string;
   inrAmount: number;
   usdcAmount: number;
-  fxRate?: number;
   txSignature?: string;
-  paymentId?: string;
   onComplete: (utr: string) => void;
   isDemo?: boolean;
 }
@@ -35,16 +34,14 @@ const C = {
   usdc:   "#2775CA",
 };
 
-function buildSteps(fxRate: number): SettlementStep[] {
-  return [
-    { id: "sig",    label: "Signature received",       sub: "Confirmed on device",                        duration: 800   },
-    { id: "verify", label: "On-chain verified (7/7)",  sub: "Solana confirmation",                        duration: 2100  },
-    { id: "rate",   label: "Rate locked",              sub: `₹${fxRate.toFixed(2)} / USDC secured`,       duration: 2400  },
-    { id: "route",  label: "Dispatching to OnMeta",    sub: "Initiating fiat bridge transfer",            duration: 8000  },
-    { id: "bank",   label: "Bank verification",        sub: "Awaiting UPI network ACK",                   duration: 11000 },
-    { id: "done",   label: "Settlement complete",      sub: "Funds available at merchant",                duration: 14200 },
-  ];
-}
+const STEPS: SettlementStep[] = [
+  { id: "sig",    label: "Signature received",       sub: "Confirmed on device",              duration: 800 },
+  { id: "verify", label: "On-chain verified (7/7)",  sub: "Solana devnet confirmation",       duration: 2100 },
+  { id: "rate",   label: "Rate locked",              sub: "₹83.18 / USDC secured",            duration: 2400 },
+  { id: "route",  label: "Dispatching to OnMeta",    sub: "Initiating fiat bridge transfer",  duration: 8000 },
+  { id: "bank",   label: "Bank verification",        sub: "Awaiting UPI network ACK",         duration: 11000 },
+  { id: "done",   label: "Settlement complete",      sub: "Funds available at merchant",      duration: 14200 },
+];
 
 function generateUTR() {
   const n = Math.floor(Math.random() * 1e12).toString().padStart(12, "0");
@@ -65,6 +62,7 @@ const STYLES = `
     overflow: hidden;
   }
 
+  /* Lime center glow — grows as settlement progresses */
   .settlement-glow {
     position: absolute;
     top: 50%; left: 50%;
@@ -86,6 +84,7 @@ const STYLES = `
     width: 100%;
   }
 
+  /* Header */
   .settle-header {
     padding: 14px 20px 0;
     display: flex;
@@ -96,11 +95,13 @@ const STYLES = `
     flex-shrink: 0;
   }
 
+  /* Merchant amount block */
   .settle-merchant {
     text-align: center;
     padding: 24px 0 28px;
   }
 
+  /* Timeline */
   .timeline {
     background: ${C.s1};
     border: 1px solid ${C.border};
@@ -133,10 +134,19 @@ const STYLES = `
     position: relative;
     z-index: 1;
   }
-  .t-node-done { background: ${C.lime}; box-shadow: 0 0 8px rgba(200,241,53,0.4); }
-  .t-node-active { background: ${C.gold}; }
-  .t-node-pending { background: transparent; border: 1px solid ${C.border}; }
+  .t-node-done {
+    background: ${C.lime};
+    box-shadow: 0 0 8px rgba(200,241,53,0.4);
+  }
+  .t-node-active {
+    background: ${C.gold};
+  }
+  .t-node-pending {
+    background: transparent;
+    border: 1px solid ${C.border};
+  }
 
+  /* Pulse ring for active node */
   .t-pulse {
     position: absolute;
     inset: -3px;
@@ -157,15 +167,42 @@ const STYLES = `
   .t-line-done { background: ${C.lime}; }
   .t-line-pending { background: ${C.border}; }
 
-  .t-content { flex: 1; min-width: 0; padding-top: 0; }
-  .t-label-done { font-size: 13px; font-weight: 500; color: ${C.lime}; }
-  .t-label-active { font-size: 13px; font-weight: 500; color: ${C.gold}; }
-  .t-label-pending { font-size: 13px; font-weight: 400; color: ${C.border}; }
-  .t-sub { font-family: 'Geist Mono', monospace; font-size: 10px; color: ${C.dim}; margin-top: 2px; }
-  .t-ts { font-family: 'Geist Mono', monospace; font-size: 10px; flex-shrink: 0; padding-top: 1px; }
+  .t-content {
+    flex: 1;
+    min-width: 0;
+    padding-top: 0;
+  }
+  .t-label-done {
+    font-size: 13px;
+    font-weight: 500;
+    color: ${C.lime};
+  }
+  .t-label-active {
+    font-size: 13px;
+    font-weight: 500;
+    color: ${C.gold};
+  }
+  .t-label-pending {
+    font-size: 13px;
+    font-weight: 400;
+    color: ${C.border};
+  }
+  .t-sub {
+    font-family: 'Geist Mono', monospace;
+    font-size: 10px;
+    color: ${C.dim};
+    margin-top: 2px;
+  }
+  .t-ts {
+    font-family: 'Geist Mono', monospace;
+    font-size: 10px;
+    flex-shrink: 0;
+    padding-top: 1px;
+  }
   .t-ts-done { color: ${C.lime}; }
   .t-ts-active { color: ${C.gold}; }
 
+  /* Bottom status */
   .settle-footer {
     padding: 16px 20px 24px;
     text-align: center;
@@ -198,19 +235,26 @@ const STYLES = `
   }
 `;
 
+// ─── Component ────────────────────────────────────────────────────────────────
 export default function SettlementScreen({
-  merchant, inrAmount, usdcAmount, fxRate = 84.00, txSignature, paymentId, onComplete, isDemo = false,
+  merchant,
+  inrAmount,
+  usdcAmount,
+  txSignature,
+  onComplete,
+  isDemo = false,
 }: SettlementScreenProps) {
-  const STEPS = buildSteps(fxRate);
   const [completedCount, setCompletedCount] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const [utr] = useState(generateUTR);
 
+  // Tick elapsed time
   useEffect(() => {
     const t = setInterval(() => setElapsed(e => e + 100), 100);
     return () => clearInterval(t);
   }, []);
 
+  // Advance steps based on elapsed
   useEffect(() => {
     const count = STEPS.filter(s => elapsed >= s.duration).length;
     setCompletedCount(count);
@@ -219,7 +263,7 @@ export default function SettlementScreen({
     }
   }, [elapsed, onComplete, utr]);
 
-  const activeIdx = completedCount;
+  const activeIdx = completedCount; // index of currently active step
   const glowSize = Math.min(completedCount * 60, 300);
   const glowOpacity = completedCount / STEPS.length * 0.06;
 
@@ -227,17 +271,27 @@ export default function SettlementScreen({
     <>
       <style>{STYLES}</style>
       <div className="settlement-screen">
+
+        {/* Background lime glow */}
         <div
           className="settlement-glow"
           style={{
-            width: glowSize, height: glowSize,
+            width: glowSize,
+            height: glowSize,
             background: `radial-gradient(circle, rgba(200,241,53,${glowOpacity * 10}) 0%, transparent 70%)`,
             opacity: glowOpacity > 0 ? 1 : 0,
           }}
         />
 
-        <div style={{ position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none", backgroundImage: `radial-gradient(circle, ${C.border} 1px, transparent 1px)`, backgroundSize: "28px 28px", opacity: 0.2 }} />
+        {/* Dot grid */}
+        <div style={{
+          position: "absolute", inset: 0, zIndex: 0, pointerEvents: "none",
+          backgroundImage: `radial-gradient(circle, ${C.border} 1px, transparent 1px)`,
+          backgroundSize: "28px 28px",
+          opacity: 0.2,
+        }} />
 
+        {/* Header */}
         <div className="settle-header">
           <span style={{ fontFamily: "'Geist Mono',monospace", fontSize: 11, color: C.dim, letterSpacing: "0.1em" }}>
             SETTLING...
@@ -245,6 +299,8 @@ export default function SettlementScreen({
         </div>
 
         <div className="settlement-content">
+
+          {/* Merchant + amount */}
           <div className="settle-merchant">
             <p style={{ fontFamily: "'Geist Mono',monospace", fontSize: 10, color: C.dim, letterSpacing: "0.1em", marginBottom: 8 }}>
               PAYMENT TO
@@ -262,6 +318,7 @@ export default function SettlementScreen({
             </div>
           </div>
 
+          {/* Timeline */}
           <div className="timeline">
             {STEPS.map((step, i) => {
               const isDone   = i < completedCount;
@@ -281,6 +338,7 @@ export default function SettlementScreen({
                   animate={{ opacity: isPending ? 0.35 : 1, x: 0 }}
                   transition={{ delay: i * 0.05, duration: 0.35 }}
                 >
+                  {/* Left: node + line */}
                   <div className="timeline-left">
                     <div className={`t-node ${isDone ? "t-node-done" : isActive ? "t-node-active" : "t-node-pending"}`}>
                       {isActive && <div className="t-pulse" />}
@@ -290,12 +348,23 @@ export default function SettlementScreen({
                     )}
                   </div>
 
+                  {/* Right: content */}
                   <div style={{ display: "flex", flex: 1, justifyContent: "space-between", gap: 8 }}>
                     <div className="t-content">
                       <AnimatePresence mode="wait">
-                        {isDone && <motion.p key="done" className="t-label-done" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>{step.label}</motion.p>}
-                        {isActive && <motion.p key="active" className="t-label-active" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>{step.label}</motion.p>}
-                        {isPending && <p className="t-label-pending">{step.label}</p>}
+                        {isDone && (
+                          <motion.p key="done" className="t-label-done" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                            {step.label}
+                          </motion.p>
+                        )}
+                        {isActive && (
+                          <motion.p key="active" className="t-label-active" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                            {step.label}
+                          </motion.p>
+                        )}
+                        {isPending && (
+                          <p className="t-label-pending">{step.label}</p>
+                        )}
                       </AnimatePresence>
                       <p className="t-sub">{step.sub}</p>
                     </div>
@@ -311,6 +380,7 @@ export default function SettlementScreen({
           </div>
         </div>
 
+        {/* Footer */}
         <div className="settle-footer">
           <div>
             <div className="do-not-close">
@@ -324,6 +394,7 @@ export default function SettlementScreen({
             </p>
           )}
         </div>
+
       </div>
     </>
   );

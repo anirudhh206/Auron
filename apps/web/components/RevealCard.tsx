@@ -1,16 +1,29 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
-import { CheckCircle, ExternalLink, Copy, Check, X, Share2 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { CheckCircle2, ExternalLink, Copy, Check, X, Share2 } from "lucide-react";
 import { getTxExplorerUrl } from "@/lib/solana";
 import confetti from "canvas-confetti";
+
+const C = {
+  bg:     "#08080A",
+  s1:     "#0F0F12",
+  s2:     "#161619",
+  border: "#26262A",
+  borderB:"#3A3A3F",
+  text:   "#F5F5F0",
+  muted:  "#9A9AA8",
+  dim:    "#606068",
+  lime:   "#C8F135",
+  gold:   "#F5A623",
+  usdc:   "#2775CA",
+};
 
 interface RevealCardProps {
   txHash: string;
   confirmText: string;
   onClose: () => void;
-  // Optional rich receipt data
   merchantName?: string;
   inrAmount?: number;
   usdcAmount?: number;
@@ -18,13 +31,114 @@ interface RevealCardProps {
   network?: string;
 }
 
+const STYLES = `
+  @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
+
+  .rc-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    background: rgba(0,0,0,0.82);
+    backdrop-filter: blur(10px);
+  }
+
+  .rc-sheet {
+    width: 100%;
+    max-width: 390px;
+    background: ${C.s1};
+    border-radius: 20px 20px 0 0;
+    border-top: 0.5px solid ${C.border};
+    overflow: hidden;
+    font-family: 'Geist', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .rc-handle {
+    width: 36px; height: 4px;
+    border-radius: 999px;
+    background: ${C.border};
+    margin: 10px auto 0;
+  }
+
+  .rc-body {
+    padding: 16px 20px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .rc-table {
+    border-radius: 12px;
+    overflow: hidden;
+    background: ${C.s2};
+    border: 1px solid ${C.border};
+  }
+  .rc-table-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 11px 14px;
+    border-bottom: 0.5px solid ${C.border};
+  }
+  .rc-table-row:last-child { border-bottom: none; }
+
+  .rc-btn-primary {
+    width: 100%;
+    padding: 14px;
+    border-radius: 12px;
+    background: ${C.lime};
+    border: none;
+    font-family: 'Geist', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: #0A0A08;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+  }
+  .rc-btn-primary:hover { background: #A3C42A; }
+  .rc-btn-primary:active { transform: scale(0.99); }
+
+  .rc-btn-secondary {
+    width: 100%;
+    padding: 13px;
+    border-radius: 12px;
+    background: transparent;
+    border: 1px solid ${C.border};
+    font-family: 'Geist', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: ${C.muted};
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .rc-btn-secondary:hover { border-color: ${C.borderB}; color: ${C.text}; }
+
+  .rc-copy-btn {
+    padding: 5px;
+    border-radius: 6px;
+    background: ${C.border};
+    border: none;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s;
+  }
+  .rc-copy-btn:hover { background: ${C.borderB}; }
+`;
+
 export default function RevealCard({
   txHash, confirmText, onClose,
   merchantName, inrAmount, usdcAmount, utrNumber, network = "Solana",
 }: RevealCardProps) {
-  const [visible,     setVisible]     = useState(false);
-  const [copiedHash,  setCopiedHash]  = useState(false);
-  const [copiedUtr,   setCopiedUtr]   = useState(false);
+  const [visible, setVisible] = useState(false);
+  const [copiedHash, setCopiedHash] = useState(false);
+  const [copiedUtr, setCopiedUtr] = useState(false);
 
   const txTime = new Date().toLocaleString("en-IN", {
     day: "numeric", month: "short", year: "numeric",
@@ -40,23 +154,21 @@ export default function RevealCard({
     return () => clearTimeout(t);
   }, []);
 
-  // Confetti on mount
   useEffect(() => {
     const timer = setTimeout(() => {
       confetti({
-        particleCount: 80,
-        spread: 70,
+        particleCount: 60,
+        spread: 65,
         origin: { y: 0.5 },
-        colors: ["#22C55E", "#3B82F6", "#22D3EE", "#A78BFA", "#F8FAFC"],
-        startVelocity: 35,
+        colors: [C.lime, "#A3C42A", C.gold, "#fff"],
+        startVelocity: 30,
         gravity: 0.9,
-        scalar: 0.85,
+        scalar: 0.8,
       });
     }, 200);
     return () => clearTimeout(timer);
   }, []);
 
-  // Auto-close
   useEffect(() => {
     const t = setTimeout(handleClose, 20_000);
     return () => clearTimeout(t);
@@ -83,146 +195,117 @@ export default function RevealCard({
 
   async function shareReceipt() {
     const text = [
-      "✅ Payment Successful via Auron",
+      "✅ Payment via Auron",
       merchantName ? `Merchant: ${merchantName}` : "",
       inrAmount ? `Amount: ₹${inrAmount.toLocaleString("en-IN")}` : "",
       usdcAmount ? `Paid: ${usdcAmount.toFixed(4)} USDC` : "",
-      `Network: ${network}`,
       `Tx: ${shortHash}`,
       utrNumber ? `UTR: ${utrNumber}` : "",
     ].filter(Boolean).join("\n");
-
     if (navigator.share) {
-      try { await navigator.share({ title: "Auron Payment Receipt", text }); } catch { /* dismissed */ }
+      try { await navigator.share({ title: "Auron Receipt", text }); } catch { /* dismissed */ }
     } else {
       navigator.clipboard.writeText(text).catch(() => {});
     }
   }
 
   return (
-    <button
-      type="button"
-      aria-label="Close payment receipt"
-      className={`fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 transition-opacity duration-300 ${visible ? "opacity-100" : "opacity-0"}`}
-      style={{ background: "rgba(0,0,0,0.85)", backdropFilter: "blur(10px)", cursor: "default" }}
-      onClick={e => e.target === e.currentTarget && handleClose()}
-    >
-      <motion.div
-        initial={{ y: 60, scale: 0.96 }} animate={{ y: 0, scale: 1 }} exit={{ y: 40, scale: 0.97 }}
-        transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-        onClick={e => e.stopPropagation()}
-        style={{
-          width: "100%", maxWidth: 420,
-          borderRadius: "24px 24px 0 0",
-          background: "#07090D",
-          border: "1px solid rgba(148,163,184,0.1)",
-          borderBottom: "none",
-          boxShadow: "0 -24px 80px rgba(0,0,0,0.6)",
-          overflow: "hidden",
-        }}
-        className="sm:rounded-3xl sm:border-b"
+    <>
+      <style>{STYLES}</style>
+      <div
+        className="rc-overlay"
+        style={{ opacity: visible ? 1 : 0, transition: "opacity 0.3s" }}
+        onClick={(e) => e.target === e.currentTarget && handleClose()}
       >
-        {/* Drag handle */}
-        <div className="sm:hidden flex justify-center pt-3 pb-1">
-          <div style={{ width: 36, height: 4, borderRadius: 999, background: "rgba(148,163,184,0.2)" }} />
-        </div>
+        <motion.div
+          className="rc-sheet"
+          initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+          transition={{ type: "spring", stiffness: 380, damping: 38 }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="rc-handle" />
 
-        {/* Close button */}
-        <div style={{ display: "flex", justifyContent: "flex-end", padding: "12px 16px 0" }}>
-          <button onClick={handleClose} style={{ padding: 6, borderRadius: 8, background: "rgba(148,163,184,0.08)", border: "none", cursor: "pointer", color: "var(--text-muted)", display: "flex", alignItems: "center" }}>
-            <X size={14} />
-          </button>
-        </div>
-
-        <div style={{ padding: "12px 20px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
-
-          {/* Success icon + title */}
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, paddingTop: 8 }}>
-            <div style={{ position: "relative" }}>
-              <motion.div
-                initial={{ scale: 0 }} animate={{ scale: 1 }}
-                transition={{ type: "spring", stiffness: 500, damping: 20, delay: 0.1 }}
-                style={{ width: 72, height: 72, borderRadius: "50%", background: "rgba(34,197,94,0.12)", border: "2px solid rgba(34,197,94,0.4)", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 0 40px rgba(34,197,94,0.25)" }}
-              >
-                <CheckCircle size={36} color="#22C55E" />
-              </motion.div>
-              {/* Pulse */}
-              <motion.div
-                animate={{ scale: [1, 1.5, 1], opacity: [0.4, 0, 0.4] }}
-                transition={{ duration: 2.5, repeat: Infinity, ease: "easeOut" }}
-                style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "2px solid rgba(34,197,94,0.35)" }}
-              />
-            </div>
-            <div style={{ textAlign: "center" }}>
-              <p style={{ fontSize: 20, fontWeight: 800, color: "var(--text-primary)", margin: "0 0 6px", letterSpacing: "-0.03em" }}>Payment Successful</p>
-              <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>Your payment has been completed.</p>
-            </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", padding: "10px 16px 0" }}>
+            <button onClick={handleClose} style={{ padding: 6, borderRadius: 8, background: C.s2, border: `1px solid ${C.border}`, cursor: "pointer", color: C.dim, display: "flex", alignItems: "center" }}>
+              <X size={13} />
+            </button>
           </div>
 
-          {/* Receipt table */}
-          <div style={{ borderRadius: 16, background: "rgba(15,23,42,0.7)", border: "1px solid rgba(148,163,184,0.08)", overflow: "hidden" }}>
-            {[
-              { label: "Merchant",   value: merchantName ?? confirmText.split(" ")[0] ?? "—" },
-              { label: "Amount",     value: inrAmount ? `₹${inrAmount.toLocaleString("en-IN")}` : "—" },
-              { label: "Paid",       value: usdcAmount ? `${usdcAmount.toFixed(2)} USDC` : "—" },
-              { label: "Network",    value: network },
-              { label: "Settlement", value: "UPI" },
-              { label: "Date & Time", value: txTime },
-            ].map(({ label, value }, i, arr) => (
-              <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderBottom: i < arr.length - 1 ? "1px solid rgba(148,163,184,0.06)" : "none" }}>
-                <span style={{ fontSize: 13, color: "var(--text-muted)" }}>{label}</span>
-                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>{value}</span>
+          <div className="rc-body">
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, paddingTop: 4 }}>
+              <div style={{ position: "relative" }}>
+                <motion.div
+                  initial={{ scale: 0 }} animate={{ scale: 1 }}
+                  transition={{ type: "spring", stiffness: 500, damping: 20, delay: 0.1 }}
+                  style={{ width: 68, height: 68, borderRadius: "50%", background: "rgba(200,241,53,0.08)", border: `1.5px solid rgba(200,241,53,0.3)`, display: "flex", alignItems: "center", justifyContent: "center" }}
+                >
+                  <CheckCircle2 size={32} color={C.lime} />
+                </motion.div>
+                <motion.div
+                  animate={{ scale: [1, 1.5, 1], opacity: [0.3, 0, 0.3] }}
+                  transition={{ duration: 2.5, repeat: Infinity, ease: "easeOut" }}
+                  style={{ position: "absolute", inset: 0, borderRadius: "50%", border: "1.5px solid rgba(200,241,53,0.2)" }}
+                />
               </div>
-            ))}
-
-            {/* Tx Hash row */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderTop: "1px solid rgba(148,163,184,0.06)" }}>
-              <span style={{ fontSize: 13, color: "var(--text-muted)" }}>Transaction Hash</span>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 12, fontFamily: "monospace", color: "var(--text-secondary)" }}>{shortHash}</span>
-                <button onClick={copyHash} style={{ padding: 5, borderRadius: 6, background: "rgba(148,163,184,0.08)", border: "none", cursor: "pointer", display: "flex", alignItems: "center" }}>
-                  {copiedHash ? <Check size={11} color="#22C55E" /> : <Copy size={11} color="var(--text-muted)" />}
-                </button>
+              <div style={{ textAlign: "center" }}>
+                <p style={{ fontFamily: "'Instrument Serif',serif", fontSize: 22, color: C.text, margin: "0 0 4px" }}>Payment Successful</p>
+                <p style={{ fontFamily: "'Geist Mono',monospace", fontSize: 11, color: C.dim, margin: 0 }}>Transaction confirmed on Solana</p>
               </div>
             </div>
 
-            {/* UTR row */}
-            {utrNumber && (
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderTop: "1px solid rgba(148,163,184,0.06)" }}>
-                <span style={{ fontSize: 13, color: "var(--text-muted)" }}>UPI Reference (UTR)</span>
+            <div className="rc-table">
+              {[
+                { label: "Merchant",    value: merchantName ?? "—" },
+                { label: "Amount",      value: inrAmount ? `₹${inrAmount.toLocaleString("en-IN")}` : "—" },
+                { label: "Paid",        value: usdcAmount ? `${usdcAmount.toFixed(4)} USDC` : "—" },
+                { label: "Network",     value: network },
+                { label: "Settlement",  value: "UPI" },
+                { label: "Date",        value: txTime },
+              ].map(({ label, value }) => (
+                <div key={label} className="rc-table-row">
+                  <span style={{ fontFamily: "'Geist Mono',monospace", fontSize: 10, color: C.dim }}>{label}</span>
+                  <span style={{ fontSize: 12, fontWeight: 500, color: C.muted }}>{value}</span>
+                </div>
+              ))}
+
+              <div className="rc-table-row">
+                <span style={{ fontFamily: "'Geist Mono',monospace", fontSize: 10, color: C.dim }}>Tx Hash</span>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 12, fontFamily: "monospace", color: "var(--text-secondary)" }}>{utrNumber}</span>
-                  <button onClick={copyUtr} style={{ padding: 5, borderRadius: 6, background: "rgba(148,163,184,0.08)", border: "none", cursor: "pointer", display: "flex", alignItems: "center" }}>
-                    {copiedUtr ? <Check size={11} color="#22C55E" /> : <Copy size={11} color="var(--text-muted)" />}
+                  <span style={{ fontFamily: "'Geist Mono',monospace", fontSize: 11, color: C.muted }}>{shortHash}</span>
+                  <button className="rc-copy-btn" onClick={copyHash}>
+                    {copiedHash ? <Check size={10} color={C.lime} /> : <Copy size={10} color={C.dim} />}
                   </button>
                 </div>
               </div>
-            )}
+
+              {utrNumber && (
+                <div className="rc-table-row">
+                  <span style={{ fontFamily: "'Geist Mono',monospace", fontSize: 10, color: C.dim }}>UTR</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontFamily: "'Geist Mono',monospace", fontSize: 11, color: C.gold }}>{utrNumber}</span>
+                    <button className="rc-copy-btn" onClick={copyUtr}>
+                      {copiedUtr ? <Check size={10} color={C.lime} /> : <Copy size={10} color={C.dim} />}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <button className="rc-btn-secondary" onClick={shareReceipt}>
+                <Share2 size={14} /> Share Receipt
+              </button>
+              <button className="rc-btn-primary" onClick={handleClose}>
+                Done
+              </button>
+              <a href={getTxExplorerUrl(txHash)} target="_blank" rel="noopener noreferrer"
+                style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontFamily: "'Geist Mono',monospace", fontSize: 11, color: C.dim, textDecoration: "none", padding: 6 }}>
+                <ExternalLink size={11} /> View on Solscan
+              </a>
+            </div>
           </div>
-
-          {/* Buttons */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {/* Share receipt */}
-            <button onClick={shareReceipt}
-              style={{ width: "100%", padding: "13px", borderRadius: 12, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(148,163,184,0.15)", fontSize: 14, fontWeight: 600, color: "var(--text-secondary)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-              <Share2 size={15} /> Share Receipt
-            </button>
-
-            {/* Back to home */}
-            <motion.button onClick={handleClose}
-              whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-              style={{ width: "100%", padding: "13px", borderRadius: 12, background: "#3B82F6", border: "none", fontSize: 14, fontWeight: 700, color: "#fff", cursor: "pointer", boxShadow: "0 4px 20px rgba(59,130,246,0.4)" }}>
-              Back to Home
-            </motion.button>
-
-            {/* View on explorer */}
-            <a href={getTxExplorerUrl(txHash)} target="_blank" rel="noopener noreferrer"
-              style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, color: "var(--text-muted)", textDecoration: "none", padding: "6px" }}>
-              <ExternalLink size={12} /> View on Solscan
-            </a>
-          </div>
-        </div>
-      </motion.div>
-    </button>
+        </motion.div>
+      </div>
+    </>
   );
 }

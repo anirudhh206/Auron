@@ -179,6 +179,204 @@ Reserve alerts fire at 2x minimum. Critical alert at 1x minimum. Both logged and
 
 ---
 
+## End-to-End Payment Flow
+
+Every payment follows the same deterministic 10-phase pipeline. Understanding it is essential for integrating with Auron or debugging issues.
+
+### Phase 0 — Authentication
+User authenticates via **Google OAuth or phone OTP** (Supabase Auth). Middleware checks session cookie on every request — unauthenticated users bounce to `/login`.
+
+### Phase 1 — Wallet Connection
+**Desktop:** Phantom wallet adapter popup.  
+**Mobile:** Phantom deep link (opens Phantom app, authenticates, redirects back with pubkey in URL).  
+Result: Solana public key + `sendTransaction` function.
+
+### Phase 2 — Onboarding (first-time only)
+User sets:
+- **Spend ceiling** (e.g., ₹5,000 max per tx)
+- **PIN** → sent to `/api/hash-pin` → **server-side argon2id hashing** → stored in Zustand, never in plaintext
+
+### Phase 3 — Payment Intent
+
+**Natural language path:**
+1. User types "Pay ₹450 to Swiggy QR"
+2. Text → `POST /api/parse-intent` (rate-limited via Vercel KV)
+3. Claude Sonnet parses into: `{ action: "upi_payment", inr_amount: 450, merchant_upi_id: "..." }`
+4. `assessRisk()` scores the action 0–100
+5. `chooseProvider()` selects settlement path (onmeta or treasury_razorpay)
+6. `runPreflightChecks()` verifies USDC balance, SOL fee balance, network
+
+**QR scan path:**
+1. User taps QR button → `QRScanner` opens camera
+2. `@zxing/browser` decodes QR → parsed into UPI intent string
+3. Amount entry modal → **bypasses Claude entirely**, goes directly to ConfirmCard
+
+### Phase 4 — Quote
+
+`/api/quote` fetches live rate from CoinGecko, applies **0.85% spread**, returns:
+```json
+{ "usdcAmount": 5.41, "fxRate": 83.18, "expiresAt": "T+60s" }
+```
+
+### Phase 5 — 6-Layer Security Check + ConfirmCard
+
+Before user can confirm, the **security system** runs:
+
+| Layer | What it does |
+|---|---|
+| Intent Mirror | User sees exact action in plain English |
+| Scam Detector | Urgency keywords detected → 60s mandatory cooldown |
+| Spend Ceiling | Amount > ceiling → requires hold-to-confirm (press + hold button) |
+| Risk Scoring | Score displayed; hard block if > 70 |
+| Closed Signing | Only Auron triggers wallet prompt (prevents fake requests) |
+| Daily Cap | Server enforces daily spend limit |
+
+### Phase 6 — Solana Transaction (Client-Side)
+
+User clicks Confirm → **Phantom signs and broadcasts:**
+
+- **UPI payment** → `buildUPIPayment()` → SPL token transfer of X USDC from user wallet → Auron treasury (`NEXT_PUBLIC_FEE_WALLET`)
+- **SOL transfer** → `buildTransferSOL()`
+- **USDC transfer** → `buildTransferUSDC()`
+- **Savings lock** → `buildSavingsLock()` → calls Anchor vault program
+- **Agreement stamp** → `buildAgreementStamp()` → Solana memo program
+- **Ownership proof** → `buildOwnershipStamp()` → SHA-256 hash on-chain
+
+Returns **Solana transaction signature** (e.g., `5KtPxQ...wR2`).
+
+### Phase 7 — Settlement Pipeline (Server)
+
+Client POSTs to `/api/v1/pay` with signature + payment details. **8-step server pipeline:**
+
+```
+1. Validate request body
+   (paymentId, merchantUpiId, inrAmount, usdcAmount, txSignature, userId)
+
+2. Idempotency check
+   If idempotencyKey already completed → return cached response immediately
+
+3. Replay protection
+   If txSignature already settled → return 409 Conflict
+
+4. ⚡ LIQUIDITY GATE (NEW)
+   checkLiquidityGate(usdcAmount):
+   • Treasury must hold MIN_RESERVE (50 USDC) + payment amount
+   • Total in-flight must not exceed 10,000 USDC
+   Fail → 503, no ledger record created
+
+5. Create ledger record
+   Supabase: transactions table
+   State: initiated → quoted → signed
+
+6. 7-step on-chain verification (HARD GATE)
+   verifyUsdcTransfer() against Solana RPC:
+   ✓ Fetch parsed tx (4 retries × 3s)
+   ✓ Confirmed or finalized commitment
+   ✓ No tx.meta.err
+   ✓ Scan all instructions + CPI inner instructions
+   ✓ USDC mint address matches
+   ✓ Amount within 2% tolerance
+   ✓ Signature not already settled
+   Fail → ledger.status = failed, return 422
+
+7. Dispatch to OnMeta (PATH A)
+   POST https://api.onmeta.in/v1/offramp/initiate
+   {amount_usdc, upi_id, fiat_amount, currency: "INR"}
+   Success → ledger.status = completed, settlements.utr = "YESB..."
+   Fail → settlements.status = pending (worker retries)
+
+8. Return result
+   Success: { paymentId, utr, status: "completed" }
+   Queued: { paymentId, status: "settling" } → poll for updates
+```
+
+### Phase 8 — Async Worker (if sync dispatch fails)
+
+`/api/workers/settlement` runs on **Vercel Cron** every 30 seconds:
+
+```
+1. Fetch up to 10 pending settlements
+2. Optimistic lock (UPDATE WHERE status='pending' AND retry_count < 3)
+3. Quote expiry check — if expired, auto-refund
+4. Price slippage guard — if FX moved >150bps, auto-refund
+5. Execute payout:
+   • provider="onmeta" → initiateOnMetaPayout()
+   • provider="treasury_razorpay" → initiateRazorpayPayout()
+6. On failure: classifyFailure() + decideRecovery()
+   • retry → settlement stays pending, picked up next cron
+   • switch_provider → create new settlement row with fallback
+   • refund → executeRefund() sends USDC back to user
+   • abandon → mark transaction failed
+```
+
+### Phase 9 — OnMeta Webhook (Confirmation)
+
+When OnMeta completes the payout, it POSTs to `/api/webhooks/onmeta`:
+
+**Verify HMAC-SHA256 signature** → then:
+
+```
+payout.completed
+  ↓ updateSettlement(utr=..., status=completed)
+  ↓ transitionTransaction(→ completed)
+  ↓ Writes directly to Supabase (not in-memory store) ✅
+
+payout.failed
+  ↓ updateSettlement(status=failed)
+  ↓ transitionTransaction(→ failed) if no fallback available
+  ↓ Settlement worker gets second chance with PATH B
+
+payout.processing
+  ↓ Acknowledge only, no state change
+```
+
+**Why direct Supabase writes:** Previous version wrote to in-memory `Map`. On Vercel's serverless, each invocation is a separate process — those writes were invisible to the status poller. Now persists across all invocations.
+
+### Phase 10 — Status Polling + Receipt
+
+`PaymentStatusTracker` polls `GET /api/v1/payment/:id` every 2–4 seconds:
+
+```json
+{
+  "status": "completed",
+  "utr": "YESB178011620946032853",
+  "settled_at": "2026-06-03T10:42:18Z",
+  "audit_trail": [
+    { "state": "initiated",  "at": "T+0.0s" },
+    { "state": "quoted",     "at": "T+0.3s" },
+    { "state": "signed",     "at": "T+0.8s" },
+    { "state": "verified",   "at": "T+2.1s" },
+    { "state": "settling",   "at": "T+2.4s" },
+    { "state": "completed",  "at": "T+14.2s" }
+  ]
+}
+```
+
+`RevealCard` displays the UTR to user. `PaymentReceipt` generates a SHA-256 receipt hash. **Merchant has received INR. End-to-end settlement complete.**
+
+---
+
+## Component Status & Implementation
+
+| Component | Dev | Staging | Prod |
+|---|---|---|---|
+| Auth (Google/phone) | ✅ | ✅ | ⏳ KYC gate |
+| Phantom wallet (desktop + mobile) | ✅ | ✅ | ✅ |
+| Claude AI intent parsing | ✅ | ✅ | ✅ (rate-limited) |
+| Live FX rate (CoinGecko) | ✅ | ✅ | ✅ |
+| 6-layer security | ✅ | ✅ | ✅ |
+| Liquidity gate | ✅ | ✅ | ✅ (NEW) |
+| Solana USDC transfer | ✅ | ✅ | ⏳ Mainnet |
+| On-chain 7-step verification | ✅ | ✅ | ⏳ Mainnet |
+| Supabase ledger + state machine | ✅ | ✅ | ✅ |
+| Settlement worker + reconciliation | ✅ | ✅ | ✅ |
+| Failure classification + auto-refund | ✅ | ✅ | ✅ |
+| OnMeta webhook → Supabase | ✅ | ✅ | ⏳ API keys (KYB) |
+| Anchor savings vault | ✅ | ✅ | ⏳ Mainnet |
+| Razorpay X dispatch (PATH B) | ✅ | ✅ | ⏳ Account ID (biz reg) |
+
+---
+
 ## Replayable Receipts
 
 Every completed payment produces a cryptographically verifiable receipt:

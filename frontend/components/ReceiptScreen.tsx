@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
+// ─── Types ────────────────────────────────────────────────────────────────────
 interface AuditEntry {
   label: string;
   timestamp: string;
@@ -58,6 +59,7 @@ const STYLES = `
     overflow: hidden;
   }
 
+  /* Lime radial glow top */
   .receipt-screen::after {
     content: '';
     position: absolute;
@@ -68,6 +70,7 @@ const STYLES = `
     z-index: 0;
   }
 
+  /* Dot grid */
   .receipt-screen::before {
     content: '';
     position: absolute;
@@ -93,6 +96,7 @@ const STYLES = `
     gap: 16px;
   }
 
+  /* Header bar */
   .receipt-header {
     padding: 14px 20px 0;
     display: flex;
@@ -103,6 +107,7 @@ const STYLES = `
     flex-shrink: 0;
   }
 
+  /* Success mark */
   .success-mark {
     display: flex;
     flex-direction: column;
@@ -115,7 +120,9 @@ const STYLES = `
     border-radius: 50%;
     border: 1px solid rgba(200,241,53,0.3);
     background: rgba(200,241,53,0.07);
-    display: flex; align-items: center; justify-content: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     position: relative;
   }
   .success-ring-pulse {
@@ -130,6 +137,7 @@ const STYLES = `
     100% { transform: scale(1.3); opacity: 0; }
   }
 
+  /* UTR block — star of the screen */
   .utr-block {
     background: ${C.s1};
     border: 1px solid ${C.border};
@@ -162,6 +170,7 @@ const STYLES = `
     margin: 12px 0;
   }
 
+  /* Proof links */
   .proof-link {
     display: flex;
     align-items: center;
@@ -174,8 +183,12 @@ const STYLES = `
     cursor: pointer;
     transition: border-color 0.15s, background 0.15s;
   }
-  .proof-link:hover { border-color: ${C.borderB}; background: ${C.s1}; }
+  .proof-link:hover {
+    border-color: ${C.borderB};
+    background: ${C.s1};
+  }
 
+  /* Audit trail */
   .audit-toggle {
     display: flex;
     align-items: center;
@@ -206,6 +219,7 @@ const STYLES = `
     margin-top: 5px;
   }
 
+  /* Done button */
   .done-btn {
     width: 100%;
     padding: 15px;
@@ -222,11 +236,16 @@ const STYLES = `
     justify-content: center;
     gap: 8px;
     transition: border-color 0.15s, background 0.15s;
+    letter-spacing: "0.02em";
     flex-shrink: 0;
   }
-  .done-btn:hover { border-color: ${C.borderB}; background: ${C.s1}; }
+  .done-btn:hover {
+    border-color: ${C.borderB};
+    background: ${C.s1};
+  }
   .done-btn:active { transform: scale(0.99); }
 
+  /* Copy feedback */
   .copy-btn {
     background: none;
     border: none;
@@ -241,8 +260,16 @@ const STYLES = `
 `;
 
 export default function ReceiptScreen({
-  merchant, upiId, inrAmount, usdcAmount, utr,
-  receiptHash = "3f8a2c...e4d1", solscanUrl, settledAt, auditTrail, onDone,
+  merchant,
+  upiId,
+  inrAmount,
+  usdcAmount,
+  utr,
+  receiptHash = "3f8a2c...e4d1",
+  solscanUrl,
+  settledAt,
+  auditTrail,
+  onDone,
 }: ReceiptScreenProps) {
   const [auditOpen, setAuditOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -270,6 +297,8 @@ export default function ReceiptScreen({
     <>
       <style>{STYLES}</style>
       <div className="receipt-screen">
+
+        {/* Header */}
         <div className="receipt-header">
           <span style={{ fontFamily: "'Geist Mono',monospace", fontSize: 11, color: C.dim, letterSpacing: "0.1em" }}>
             RECEIPT
@@ -277,6 +306,8 @@ export default function ReceiptScreen({
         </div>
 
         <div className="receipt-content">
+
+          {/* Success mark */}
           <motion.div {...fadeUp(0)} className="success-mark">
             <div className="success-ring">
               <div className="success-ring-pulse" />
@@ -295,6 +326,7 @@ export default function ReceiptScreen({
             </p>
           </motion.div>
 
+          {/* Transaction summary */}
           <motion.div {...fadeUp(0.06)} style={{ textAlign: "center" }}>
             <p style={{ fontFamily: "'Instrument Serif',serif", fontSize: 22, color: C.text, margin: 0 }}>
               ₹{inrAmount.toLocaleString("en-IN")}{" "}
@@ -306,6 +338,7 @@ export default function ReceiptScreen({
             </p>
           </motion.div>
 
+          {/* UTR block — the star */}
           <motion.div {...fadeUp(0.1)} className="utr-block">
             <div className="utr-header">
               <p style={{ fontFamily: "'Geist Mono',monospace", fontSize: 10, color: C.dim, letterSpacing: "0.12em", margin: 0 }}>
@@ -344,6 +377,7 @@ export default function ReceiptScreen({
             </div>
           </motion.div>
 
+          {/* Proof links */}
           <motion.div {...fadeUp(0.14)} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {solscanUrl && (
               <a className="proof-link" href={solscanUrl} target="_blank" rel="noopener noreferrer">
@@ -362,6 +396,7 @@ export default function ReceiptScreen({
             </div>
           </motion.div>
 
+          {/* Audit trail toggle */}
           <motion.div {...fadeUp(0.18)}>
             <button className="audit-toggle" onClick={() => setAuditOpen(o => !o)}>
               <span style={{ fontFamily: "'Geist Mono',monospace", fontSize: 10, color: C.dim, letterSpacing: "0.1em" }}>
@@ -406,8 +441,10 @@ export default function ReceiptScreen({
               )}
             </AnimatePresence>
           </motion.div>
+
         </div>
 
+        {/* Done button */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -421,6 +458,7 @@ export default function ReceiptScreen({
             </svg>
           </button>
         </motion.div>
+
       </div>
     </>
   );

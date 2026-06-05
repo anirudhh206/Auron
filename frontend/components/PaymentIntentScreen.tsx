@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
+// ─── Types ────────────────────────────────────────────────────────────────────
 interface ParsedIntent {
   merchant: string;
   upiId: string;
@@ -17,11 +18,9 @@ interface PaymentIntentScreenProps {
   onConfirm: (intent: ParsedIntent) => void;
   onBack: () => void;
   fxRate?: number;
-  userId?: string;
-  /** Pre-fill the input and auto-submit (used when scanning a QR with no amount) */
-  initialQuery?: string;
 }
 
+// ─── Tokens ───────────────────────────────────────────────────────────────────
 const C = {
   bg:      "#08080A",
   s1:      "#0F0F12",
@@ -34,7 +33,6 @@ const C = {
   lime:    "#C8F135",
   gold:    "#F5A623",
   usdc:    "#2775CA",
-  red:     "#EF4444",
 };
 
 const SUGGESTIONS = [
@@ -44,32 +42,36 @@ const SUGGESTIONS = [
   "Split coffee ₹340",
 ];
 
-// ─── Local fallback parser (when API is unavailable) ──────────────────────────
-function localParseIntent(msg: string, fxRate: number): ParsedIntent | null {
+// Simulated intent parser
+function simulateParseIntent(msg: string, fxRate: number): ParsedIntent | null {
   const amountMatch = msg.match(/₹?\s*(\d+(?:,\d+)?(?:\.\d+)?)/);
   if (!amountMatch) return null;
   const inr = parseFloat(amountMatch[1].replace(",", ""));
-  if (!inr || inr <= 0) return null;
-  const merchants: Record<string, { name: string; upi: string }> = {
-    swiggy:    { name: "Swiggy",    upi: "swiggy@hdfcbank"  },
-    zomato:    { name: "Zomato",    upi: "zomato@paytm"     },
-    amazon:    { name: "Amazon",    upi: "amazon@axis"       },
-    priya:     { name: "Priya",     upi: "priya@okaxis"      },
-    rent:      { name: "Landlord",  upi: "landlord@sbi"      },
-    coffee:    { name: "Blue Tokai", upi: "bluetokai@icici"  },
-    starbucks: { name: "Starbucks", upi: "starbucks@icici"  },
-    flipkart:  { name: "Flipkart",  upi: "flipkart@ybl"     },
+  const merchants: Record<string, string> = {
+    swiggy: "swiggy@hdfcbank",
+    zomato: "zomato@paytm",
+    amazon: "amazon@axis",
+    priya:  "priya@okaxis",
+    rent:   "landlord@sbi",
+    coffee: "bluetokai@icici",
   };
   const lower = msg.toLowerCase();
   let merchant = "Merchant", upiId = "merchant@upi";
-  for (const [key, val] of Object.entries(merchants)) {
-    if (lower.includes(key)) { merchant = val.name; upiId = val.upi; break; }
+  for (const [key, upi] of Object.entries(merchants)) {
+    if (lower.includes(key)) {
+      merchant = key.charAt(0).toUpperCase() + key.slice(1);
+      upiId = upi;
+      break;
+    }
   }
   return {
-    merchant, upiId,
+    merchant,
+    upiId,
     inrAmount: inr,
     usdcAmount: parseFloat((inr / fxRate).toFixed(2)),
-    fxRate, settlementPath: "OnMeta A", confidence: 0.85,
+    fxRate,
+    settlementPath: "OnMeta A",
+    confidence: 0.94,
   };
 }
 
@@ -87,6 +89,7 @@ const STYLES = `
     overflow: hidden;
   }
 
+  /* Pure dark bg - no glow on this screen */
   .intent-content {
     flex: 1;
     overflow-y: auto;
@@ -137,9 +140,13 @@ const STYLES = `
     transition: border-color 0.15s, color 0.15s;
     white-space: nowrap;
   }
-  .suggestion-pill:hover { border-color: ${C.borderB}; color: ${C.text}; }
+  .suggestion-pill:hover {
+    border-color: ${C.borderB};
+    color: ${C.text};
+  }
   .suggestion-pill:active { transform: scale(0.97); }
 
+  /* Parsed intent card */
   .intent-card {
     background: ${C.s1};
     border: 1px solid ${C.border};
@@ -149,6 +156,7 @@ const STYLES = `
     overflow: hidden;
   }
 
+  /* Confidence bar at top of card */
   .confidence-bar {
     position: absolute;
     top: 0; left: 0;
@@ -175,6 +183,7 @@ const STYLES = `
     text-transform: uppercase;
   }
 
+  /* Confirm button */
   .confirm-btn {
     width: 100%;
     margin-top: 16px;
@@ -196,6 +205,7 @@ const STYLES = `
   .confirm-btn:hover { background: #A3C42A; }
   .confirm-btn:active { transform: scale(0.99); }
 
+  /* Input bar */
   .input-bar {
     padding: 12px 16px 20px;
     background: ${C.s1};
@@ -243,10 +253,24 @@ const STYLES = `
   }
   .send-btn:hover { background: #A3C42A; }
   .send-btn:active { transform: scale(0.93); }
-  .send-btn:disabled { background: ${C.border}; cursor: default; }
+  .send-btn:disabled {
+    background: ${C.border};
+    cursor: default;
+  }
 
-  .loading-dots { display: flex; gap: 5px; align-items: center; padding: 12px 0; }
-  .loading-dot { width: 6px; height: 6px; border-radius: 50%; background: ${C.dim}; animation: dotBounce 1.2s ease-in-out infinite; }
+  /* Loading dots */
+  .loading-dots {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+    padding: 12px 0;
+  }
+  .loading-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: ${C.dim};
+    animation: dotBounce 1.2s ease-in-out infinite;
+  }
   .loading-dot:nth-child(2) { animation-delay: 0.2s; }
   .loading-dot:nth-child(3) { animation-delay: 0.4s; }
   @keyframes dotBounce {
@@ -254,6 +278,7 @@ const STYLES = `
     40% { transform: translateY(-6px); opacity: 1; }
   }
 
+  /* Top bar */
   .intent-topbar {
     display: flex;
     align-items: center;
@@ -263,135 +288,63 @@ const STYLES = `
     position: relative;
     z-index: 2;
   }
-
-  .error-banner {
-    padding: 10px 14px;
-    background: rgba(239,68,68,0.08);
-    border: 1px solid rgba(239,68,68,0.2);
-    border-radius: 10px;
-    font-family: 'Geist Mono', monospace;
-    font-size: 11px;
-    color: #EF4444;
-    line-height: 1.5;
-  }
 `;
 
 export default function PaymentIntentScreen({
-  onConfirm, onBack, fxRate = 84.00, userId = "anonymous", initialQuery,
+  onConfirm,
+  onBack,
+  fxRate = 83.18,
 }: PaymentIntentScreenProps) {
-  const [input, setInput]   = useState(initialQuery ?? "");
+  const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [parsed, setParsed]   = useState<ParsedIntent | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [parsed, setParsed] = useState<ParsedIntent | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Focus input on mount; auto-submit if initialQuery is provided
   useEffect(() => {
     setTimeout(() => inputRef.current?.focus(), 300);
-    if (initialQuery?.trim()) {
-      setTimeout(() => handleSubmit(initialQuery.trim()), 400);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function handleSubmit(msg?: string) {
-    const text = (msg ?? input).trim();
+    const text = msg ?? input.trim();
     if (!text) return;
     setInput("");
     setParsed(null);
-    setErrorMsg(null);
     setLoading(true);
+    // Simulate API call
+    await new Promise(r => setTimeout(r, 900));
+    const result = simulateParseIntent(text, fxRate);
+    setLoading(false);
+    if (result) setParsed(result);
+  }
 
-    try {
-      // ── Call real Claude intent parser ─────────────────────────────────────
-      const res = await fetch("/api/parse-intent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, userId }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-
-        if (data.type === "action" && data.action) {
-          const a = data.action;
-          // Map ParsedAction → ParsedIntent for UPI payment
-          if (a.upi_id && (a.inr_amount || a.amount)) {
-            const inr = a.inr_amount ?? (a.amount ? a.amount * fxRate : 0);
-            if (inr > 0) {
-              setParsed({
-                merchant:      a.merchant_name ?? a.upi_id.split("@")[0],
-                upiId:         a.upi_id,
-                inrAmount:     inr,
-                usdcAmount:    parseFloat((inr / fxRate).toFixed(2)),
-                fxRate,
-                settlementPath: "OnMeta A",
-                confidence:    a.confidence ?? 0.94,
-              });
-              setLoading(false);
-              return;
-            }
-          }
-          // Non-UPI transfer with recipient
-          if (a.recipient && (a.amount_usdc || a.amount)) {
-            const usdc = a.amount_usdc ?? a.amount ?? 0;
-            const inr  = parseFloat((usdc * fxRate).toFixed(2));
-            setParsed({
-              merchant:      a.recipient.includes("@") ? a.recipient.split("@")[0] : a.recipient,
-              upiId:         a.recipient.includes("@") ? a.recipient : `${a.recipient}@upi`,
-              inrAmount:     inr,
-              usdcAmount:    usdc,
-              fxRate,
-              settlementPath: "OnMeta A",
-              confidence:    a.confidence ?? 0.90,
-            });
-            setLoading(false);
-            return;
-          }
-          setErrorMsg("Couldn't extract payment details. Try: 'Pay ₹500 to swiggy@hdfcbank'");
-        } else if (data.type === "clarification") {
-          setErrorMsg(data.question ?? "Please clarify your payment request");
-        } else {
-          setErrorMsg(data.error ?? "Please describe the payment more clearly");
-        }
-      } else {
-        throw new Error("API unavailable");
-      }
-    } catch {
-      // Fallback to local parser when API unavailable or rate-limited
-      const fallback = localParseIntent(text, fxRate);
-      if (fallback) {
-        setParsed(fallback);
-      } else {
-        setErrorMsg("Couldn't understand that. Try: 'Pay ₹450 to Swiggy'");
-      }
-    } finally {
-      setLoading(false);
-    }
+  function handleKey(e: React.KeyboardEvent) {
+    if (e.key === "Enter") handleSubmit();
   }
 
   return (
     <>
       <style>{STYLES}</style>
       <div className="intent-screen">
+
+        {/* Top bar */}
         <div className="intent-topbar">
-          <button
-            onClick={onBack}
-            style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, color: C.muted, fontSize: 13 }}
-          >
+          <button onClick={onBack} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, color: C.muted, fontSize: 13 }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M19 12H5M12 5l-7 7 7 7"/>
             </svg>
             Back
           </button>
-          <span style={{ fontFamily: "'Geist Mono',monospace", fontSize: 11, color: C.dim, letterSpacing: "0.1em" }}>NEW PAYMENT</span>
+          <span style={{ fontFamily: "'Geist Mono',monospace", fontSize: 11, color: C.dim, letterSpacing: "0.1em" }}>
+            NEW PAYMENT
+          </span>
           <div style={{ width: 48 }} />
         </div>
 
+        {/* Content */}
         <div className="intent-content">
 
-          {/* Empty / suggestions state */}
-          {!parsed && !loading && !errorMsg && (
+          {/* Empty state */}
+          {!parsed && !loading && (
             <motion.div className="intent-empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.4 }}>
               <p className="empty-headline">What are you<br />paying for?</p>
               <div className="suggestion-pills">
@@ -407,21 +360,11 @@ export default function PaymentIntentScreen({
           {/* Loading */}
           {loading && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ padding: "12px 4px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div className="loading-dots">
-                  <div className="loading-dot" /><div className="loading-dot" /><div className="loading-dot" />
-                </div>
-                <span style={{ fontFamily: "'Geist Mono',monospace", fontSize: 10, color: C.dim, letterSpacing: "0.08em" }}>
-                  PARSING INTENT…
-                </span>
+              <div className="loading-dots">
+                <div className="loading-dot" />
+                <div className="loading-dot" />
+                <div className="loading-dot" />
               </div>
-            </motion.div>
-          )}
-
-          {/* Error */}
-          {errorMsg && !parsed && (
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="error-banner">
-              {errorMsg}
             </motion.div>
           )}
 
@@ -435,7 +378,11 @@ export default function PaymentIntentScreen({
                 transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
                 className="intent-card"
               >
-                <div className="confidence-bar" style={{ width: `${parsed.confidence * 100}%` }} />
+                {/* Confidence bar */}
+                <div
+                  className="confidence-bar"
+                  style={{ width: `${parsed.confidence * 100}%` }}
+                />
 
                 {/* Merchant header */}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, paddingTop: 6 }}>
@@ -445,16 +392,18 @@ export default function PaymentIntentScreen({
                     <p style={{ fontFamily: "'Geist Mono',monospace", fontSize: 11, color: C.dim, margin: "2px 0 0" }}>{parsed.upiId}</p>
                   </div>
                   <div style={{
-                    width: 44, height: 44, borderRadius: 10,
-                    background: C.s2, border: `1px solid ${C.border}`,
+                    width: 44, height: 44,
+                    borderRadius: 10,
+                    background: C.s2,
+                    border: `1px solid ${C.border}`,
                     display: "flex", alignItems: "center", justifyContent: "center",
                     fontSize: 16, fontWeight: 700, color: C.muted,
                   }}>
-                    {parsed.merchant[0].toUpperCase()}
+                    {parsed.merchant[0]}
                   </div>
                 </div>
 
-                {/* Details */}
+                {/* Amount row */}
                 <div className="intent-row">
                   <span className="intent-label">Amount</span>
                   <div style={{ textAlign: "right" }}>
@@ -466,12 +415,16 @@ export default function PaymentIntentScreen({
                     </p>
                   </div>
                 </div>
+
+                {/* Rate row */}
                 <div className="intent-row">
                   <span className="intent-label">Rate</span>
                   <span style={{ fontFamily: "'Geist Mono',monospace", fontSize: 13, color: C.muted }}>
-                    ₹{parsed.fxRate.toFixed(2)} / USDC
+                    ₹{parsed.fxRate} / USDC
                   </span>
                 </div>
+
+                {/* Path row */}
                 <div className="intent-row">
                   <span className="intent-label">Settlement</span>
                   <span style={{ fontFamily: "'Geist Mono',monospace", fontSize: 12, color: C.lime }}>
@@ -479,45 +432,28 @@ export default function PaymentIntentScreen({
                   </span>
                 </div>
 
-                {/* CTA */}
+                {/* Confirm button */}
                 <button className="confirm-btn" onClick={() => onConfirm(parsed)}>
-                  Review &amp; Confirm
+                  Review & Confirm
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M5 12h14M12 5l7 7-7 7"/>
                   </svg>
                 </button>
-
-                {/* Try again */}
-                <button
-                  onClick={() => { setParsed(null); setErrorMsg(null); setTimeout(() => inputRef.current?.focus(), 100); }}
-                  style={{ width: "100%", marginTop: 8, padding: "8px", background: "none", border: "none", cursor: "pointer", fontFamily: "'Geist Mono',monospace", fontSize: 10, color: C.dim, letterSpacing: "0.08em" }}
-                >
-                  NOT RIGHT? TRY AGAIN
-                </button>
               </motion.div>
             )}
           </AnimatePresence>
-
         </div>
 
         {/* Input bar */}
         <div className="input-bar">
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-            <span style={{ fontFamily: "'Geist Mono',monospace", fontSize: 9, color: C.dim, letterSpacing: "0.08em" }}>
-              POWERED BY CLAUDE AI
-            </span>
-            <span style={{ fontFamily: "'Geist Mono',monospace", fontSize: 9, color: C.dim }}>
-              1 USDC = ₹{fxRate.toFixed(2)}
-            </span>
-          </div>
           <div className="input-wrap">
             <input
               ref={inputRef}
               className="chat-input"
-              placeholder="Pay ₹450 to Swiggy…"
+              placeholder="Pay ₹450 to Swiggy..."
               value={input}
               onChange={e => setInput(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && handleSubmit()}
+              onKeyDown={handleKey}
             />
             <button
               className="send-btn"
@@ -530,6 +466,7 @@ export default function PaymentIntentScreen({
             </button>
           </div>
         </div>
+
       </div>
     </>
   );

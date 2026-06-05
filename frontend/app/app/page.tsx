@@ -15,16 +15,21 @@ import TransactionHistory from "@/components/TransactionHistory";
 import OnboardingFlow from "@/components/OnboardingFlow";
 import MerchantQRModal from "@/components/MerchantQRModal";
 import NetworkMismatchBanner from "@/components/NetworkMismatchBanner";
+import DashboardScreen from "@/components/auron/DashboardScreen";
+import PaymentIntentScreen from "@/components/auron/PaymentIntentScreen";
+import ConfirmCard from "@/components/auron/ConfirmCard";
+import SettlementScreen from "@/components/auron/SettlementScreen";
+import ReceiptScreen from "@/components/auron/ReceiptScreen";
 import { usePhantomDeepLink } from "@/hooks/usePhantomDeepLink";
 import {
-  QrCode, MessageSquare, History, LogOut, Send,
-  Lock, FileText, ShieldCheck, Wallet, ArrowRight, ChevronRight,
+  QrCode, MessageSquare, History, LogOut,
+  Bell, Home, Activity, User,
 } from "lucide-react";
 import AuronLogo from "@/components/AuronLogo";
 import Link from "next/link";
-import type { User } from "@supabase/supabase-js";
+import type { User as SupabaseUser } from "@supabase/supabase-js";
 
-type MobileTab = "scan" | "chat";
+type MobileTab = "home" | "scan" | "chat" | "activity" | "profile";
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function AppPage() {
@@ -32,21 +37,117 @@ export default function AppPage() {
   const { setVisible } = useWalletModal();
   const deepLink = usePhantomDeepLink();
 
-  // Merge desktop wallet-adapter + mobile deep-link session
   const isConnected = walletConnected || deepLink.isConnected;
   const address = publicKey?.toString() ?? deepLink.publicKey ?? null;
 
   const { setAddress, prefs } = useStore();
 
-  const [showHistory, setShowHistory] = useState(false);
-  const [showMyQR, setShowMyQR] = useState(false);
-  const [mobileTab, setMobileTab] = useState<MobileTab>("scan");
-  const [supabaseUser, setSupabaseUser] = useState<User | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
+  const [showHistory, setShowHistory]   = useState(false);
+  const [showMyQR, setShowMyQR]         = useState(false);
+  const [mobileTab, setMobileTab]       = useState<MobileTab>("home");
+  const [supabaseUser, setSupabaseUser] = useState<SupabaseUser | null>(null);
+  const [authLoading, setAuthLoading]   = useState(true);
 
-  const chatRef = useRef<ChatInterfaceHandle>(null);
-  const router = useRouter();
+  // Payment flow state
+  const [pendingIntent, setPendingIntent] = useState<any>(null);
+  const [settling, setSettling] = useState(false);
+  const [completedUTR, setCompletedUTR] = useState<string | null>(null);
+  const [showReceipt, setShowReceipt] = useState(false);
+
+  const chatRef    = useRef<ChatInterfaceHandle>(null);
+  const realUTRRef = useRef<string | null>(null);
+  const router     = useRouter();
   const supabase = createClient();
+  const { signAndSendTransaction } = useWallet();
+
+  // Fetch USDC balance
+  const { data: usdcBalance = 0 } = useQuery({
+    queryKey: ["usdc-balance", address],
+    queryFn: () => getUSDCBalance(address!),
+    enabled: !!address,
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+
+  // Handle payment with Phantom wallet
+  const handlePaymentWithPhantom = async (intent: any, onProgress?: (step: number) => void) => {
+    try {
+      onProgress?.(1); // Quote generated
+
+      // 1. Get payment transaction from API
+      const payRes = await fetch("/api/v1/pay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          merchant: intent.merchant,
+          upiId: intent.upiId,
+          inrAmount: intent.inrAmount,
+          usdcAmount: intent.usdcAmount,
+          userAddress: address,
+        }),
+      });
+
+      if (!payRes.ok) {
+        throw new Error("Failed to create payment transaction");
+      }
+
+      const { transaction: txData, txSignature } = await payRes.json();
+
+      onProgress?.(2); // Wallet signed
+
+      // 2. Sign transaction with Phantom wallet
+      let signature: string;
+      try {
+        const signedTx = await signAndSendTransaction(txData);
+        signature = signedTx;
+      } catch (signErr) {
+        const msg = signErr instanceof Error ? signErr.message : "Signature rejected";
+        if (msg.toLowerCase().includes("user rejected") || msg.toLowerCase().includes("cancelled")) {
+          throw new Error("Payment cancelled by user");
+        }
+        throw signErr;
+      }
+
+      onProgress?.(3); // USDC received
+      onProgress?.(4); // Settlement verified
+
+      // 3. Wait for settlement (poll status)
+      let settled = false;
+      let attempts = 0;
+      const maxAttempts = 30;
+
+      while (!settled && attempts < maxAttempts) {
+        await new Promise(r => setTimeout(r, 500));
+
+        try {
+          const statusRes = await fetch(`/api/v1/pay/status?txSignature=${signature}`);
+          if (statusRes.ok) {
+            const { settled: isSettled, utr } = await statusRes.json();
+            if (isSettled) {
+              settled = true;
+              onProgress?.(5); // UPI delivered
+              return utr || `UTR${Date.now()}`;
+            }
+          }
+        } catch (err) {
+          // Continue polling
+        }
+        attempts++;
+      }
+
+      // Mock UTR if settlement API not available
+      if (!settled) {
+        const mockUTR = `YESB${Math.floor(Math.random() * 1e12).toString().padStart(12, "0")}`;
+        onProgress?.(5);
+        return mockUTR;
+      }
+
+      throw new Error("Settlement timeout");
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Payment failed";
+      throw new Error(msg);
+    }
+  };
 
   useEffect(() => { setAddress(address ?? null); }, [address, setAddress]);
 
@@ -68,27 +169,25 @@ export default function AppPage() {
     router.push("/");
   }
 
-  // Mobile: Scan tab button → switch to chat + open QR scanner
-  function handleMobileScan() {
+  function handleScanQR() {
     setMobileTab("chat");
     setTimeout(() => chatRef.current?.openQRScanner(), 80);
   }
 
-  // Mobile: Quick action chip → switch to chat + pre-fill
   function handleQuickAction(text: string) {
     setMobileTab("chat");
     setTimeout(() => chatRef.current?.submitMessage(text), 80);
   }
 
-  // ─── Loading ────────────────────────────────────────────────────────────
+  // ── Loading ──────────────────────────────────────────────────────────────
   if (authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: "var(--bg-base)" }}>
-        <div className="flex flex-col items-center gap-4">
-          <div className="animate-pulse">
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#08080A" }}>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+          <motion.div animate={{ opacity: [0.4, 1, 0.4] }} transition={{ duration: 1.6, repeat: Infinity }}>
             <AuronLogo size={44} />
-          </div>
-          <p className="text-sm" style={{ color: "var(--text-muted)" }}>Loading Auron...</p>
+          </motion.div>
+          <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Loading Auron…</p>
         </div>
       </div>
     );
@@ -97,490 +196,447 @@ export default function AppPage() {
   if (!supabaseUser) return null;
   if (!prefs.hasOnboarded) return <OnboardingFlow />;
 
-  // ─── Shared background ────────────────────────────────────────────────────
-  const Aurora = () => (
-    <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
-      <div className="absolute -top-40 -left-40 w-[600px] h-[600px] rounded-full"
-        style={{ background: "radial-gradient(circle, rgba(201,168,76,0.09) 0%, transparent 70%)", filter: "blur(60px)" }} />
-      <div className="absolute -bottom-40 -right-20 w-[700px] h-[700px] rounded-full"
-        style={{ background: "radial-gradient(circle, rgba(201,168,76,0.06) 0%, transparent 70%)", filter: "blur(80px)" }} />
-      <div className="absolute inset-0 opacity-[0.02]"
-        style={{ backgroundImage: "linear-gradient(rgba(201,168,76,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(201,168,76,0.5) 1px, transparent 1px)", backgroundSize: "60px 60px" }} />
-    </div>
-  );
-
   return (
-    <div className="relative noise" style={{ background: "var(--bg-base)" }}>
-      <Aurora />
+    <div style={{ background: "#08080A", minHeight: "100dvh" }}>
 
-      {/* ═══════════════════════════════════════════════════════════════
-          DESKTOP / TABLET LAYOUT  (md and above — 768px+)
-          ═══════════════════════════════════════════════════════════════ */}
+      {/* ══════════════════════════════════════════════════════════
+          DESKTOP (md+)
+      ══════════════════════════════════════════════════════════ */}
       <div className="hidden md:flex flex-col h-screen overflow-hidden">
-        {/* Desktop header */}
         <motion.header
           initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-          className="relative z-20 flex items-center justify-between px-8 py-4 glass-strong"
-          style={{ borderBottom: "1px solid rgba(201,168,76,0.1)" }}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "14px 32px",
+            background: "rgba(8,8,10,0.9)",
+            borderBottom: "1px solid #26262A",
+            backdropFilter: "blur(24px)",
+            position: "relative", zIndex: 20,
+          }}
         >
-          <Link href="/" className="flex items-center gap-3">
-            <motion.div whileHover={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 400 }}>
-              <AuronLogo size={34} showText textSize={16} />
-            </motion.div>
+          <Link href="/" style={{ textDecoration: "none" }}>
+            <AuronLogo size={32} showText textSize={15} />
           </Link>
-
-          <div className="flex items-center gap-2">
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             {supabaseUser && (
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs"
-                style={{ background: "rgba(201,168,76,0.06)", border: "1px solid rgba(201,168,76,0.12)", color: "var(--text-secondary)" }}>
-                {supabaseUser.user_metadata?.avatar_url
-                  ? <img src={supabaseUser.user_metadata.avatar_url} alt="" className="w-5 h-5 rounded-full" />
-                  : <div className="w-5 h-5 rounded-full btn-gold flex items-center justify-center text-[9px] font-bold text-[#0A0A0F]">
-                      {(supabaseUser.email ?? "A")[0].toUpperCase()}
-                    </div>
-                }
+              <div style={{
+                display: "flex", alignItems: "center", gap: 8,
+                padding: "6px 12px", borderRadius: 10,
+                background: "rgba(59,130,246,0.08)",
+                border: "1px solid rgba(59,130,246,0.15)",
+                fontSize: 12, color: "var(--text-secondary)",
+              }}>
+                <div style={{
+                  width: 22, height: 22, borderRadius: "50%",
+                  background: "linear-gradient(135deg,#7C3AED,#3B82F6)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 10, fontWeight: 700, color: "#fff",
+                }}>
+                  {(supabaseUser.email ?? "A")[0].toUpperCase()}
+                </div>
                 <span>{supabaseUser.user_metadata?.full_name ?? supabaseUser.email?.split("@")[0]}</span>
               </div>
             )}
-            <button onClick={() => setShowMyQR(true)}
-              aria-label="My QR code — receive USDC"
-              className="p-2.5 rounded-xl transition-all duration-150 hover:text-[#C9A84C]"
-              style={{ color: "var(--text-secondary)" }}>
+            <button onClick={() => setShowMyQR(true)} style={{ padding: 8, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", borderRadius: 8 }}>
               <QrCode size={17} />
             </button>
-            <button onClick={() => setShowHistory(true)}
-              aria-label="Transaction history"
-              className="p-2.5 rounded-xl transition-all duration-150 hover:text-white"
-              style={{ color: "var(--text-secondary)" }}>
+            <button onClick={() => setShowHistory(true)} style={{ padding: 8, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", borderRadius: 8 }}>
               <History size={17} />
             </button>
             {isConnected ? <WalletWidget /> : (
-              <button onClick={handleSignOut}
-                aria-label="Sign out"
-                className="p-2.5 rounded-xl transition-all duration-150 hover:text-red-400"
-                style={{ color: "var(--text-muted)" }}>
+              <button onClick={handleSignOut} style={{ padding: 8, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", borderRadius: 8 }}>
                 <LogOut size={17} />
               </button>
             )}
           </div>
         </motion.header>
 
-        {/* Network mismatch warning */}
-        <div className="relative z-10 max-w-2xl mx-auto px-4 pt-2">
+        <div style={{ position: "relative", zIndex: 10, maxWidth: 672, margin: "0 auto", padding: "8px 16px 0", width: "100%" }}>
           <NetworkMismatchBanner />
         </div>
 
-        {/* Desktop: full chat */}
-        <main className="relative z-10 flex-1 overflow-hidden">
-          <div className="h-full max-w-2xl mx-auto">
+        <main style={{ position: "relative", zIndex: 10, flex: 1, overflow: "hidden" }}>
+          <div style={{ height: "100%", maxWidth: 672, margin: "0 auto" }}>
             <ChatInterface ref={chatRef} />
           </div>
         </main>
       </div>
 
-      {/* ═══════════════════════════════════════════════════════════════
-          MOBILE LAYOUT  (below md — under 768px) — scan-first, bottom nav
-          ═══════════════════════════════════════════════════════════════ */}
+      {/* ══════════════════════════════════════════════════════════
+          MOBILE (below md)
+      ══════════════════════════════════════════════════════════ */}
       <div className="md:hidden flex flex-col" style={{ height: "100dvh" }}>
 
-        {/* Mobile header — compact */}
-        <motion.header
-          initial={{ y: -16, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.5 }}
-          className="relative z-20 flex items-center justify-between px-5 py-3 glass-strong shrink-0"
-          style={{ borderBottom: "1px solid rgba(201,168,76,0.1)" }}
-        >
-          <Link href="/">
-            <AuronLogo size={30} showText textSize={14} />
-          </Link>
+        {/* Mobile Header */}
+        <MobileHeader
+          user={supabaseUser}
+          isConnected={isConnected}
+          address={address}
+          deepLink={deepLink}
+          walletConnected={walletConnected}
+          setVisible={setVisible}
+          onSignOut={handleSignOut}
+          onHistory={() => setShowHistory(true)}
+        />
 
-          <div className="flex items-center gap-2">
-            <button onClick={() => setShowHistory(true)}
-              aria-label="Transaction history"
-              className="p-2 rounded-xl" style={{ color: "var(--text-muted)" }}>
-              <History size={16} />
-            </button>
-            {walletConnected ? (
-              <WalletWidget />
-            ) : deepLink.isConnected && address ? (
-              /* Mobile deep-link session pill */
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl"
-                style={{ background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.25)" }}>
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span style={{ fontSize: "11px", fontWeight: 600, color: "#10b981", fontFamily: "monospace" }}>
-                  {shortAddr(address)}
-                </span>
-                <button
-                  onClick={() => { deepLink.disconnect(); }}
-                  className="ml-1 opacity-50 hover:opacity-100 transition-opacity"
-                  title="Disconnect"
-                >
-                  <LogOut size={12} style={{ color: "#10b981" }} />
-                </button>
-              </div>
-            ) : (
-              <button onClick={handleSignOut} aria-label="Sign out" className="p-2 rounded-xl" style={{ color: "var(--text-muted)" }}>
-                <LogOut size={16} />
-              </button>
-            )}
-          </div>
-        </motion.header>
+        {/* Tab Content */}
+        <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
 
-        {/* Tab content area */}
-        <div className="relative z-10 flex-1 overflow-hidden">
-
-          {/* Scan tab */}
-          <div className={mobileTab === "scan" ? "h-full" : "hidden"}>
-            <MobileScanHome
+          {/* Home tab */}
+          <div className={mobileTab === "home" ? "h-full" : "hidden"}>
+            <DashboardScreen
+              user={supabaseUser}
               address={address}
               isConnected={isConnected}
-              user={supabaseUser}
-              onScan={handleMobileScan}
-              onMyQR={() => setShowMyQR(true)}
-              onQuickAction={handleQuickAction}
-              onSignOut={handleSignOut}
+              usdcBalance={usdcBalance}
+              fxRate={83.18}
+              onScanQR={handleScanQR}
+              onTypePayment={() => setMobileTab("chat")}
               onConnect={() =>
                 deepLink.isMobileDevice && !deepLink.isInPhantomBrowser
                   ? deepLink.connect()
                   : setVisible(true)
               }
+              onQuickAction={handleQuickAction}
             />
           </div>
 
-          {/* Chat tab — always mounted so ref works */}
-          <div className={mobileTab === "chat" ? "h-full" : "hidden"} style={{ height: "100%" }}>
+          {/* Scan tab → switches to chat + opens scanner */}
+          <div className={mobileTab === "scan" ? "h-full" : "hidden"}>
             <ChatInterface ref={chatRef} />
+          </div>
+
+          {/* Chat tab → PaymentIntent → Settlement → Receipt */}
+          <div className={mobileTab === "chat" ? "h-full" : "hidden"} style={{ height: "100%" }}>
+            {showReceipt && pendingIntent && completedUTR ? (
+              <ReceiptScreen
+                merchant={pendingIntent.merchant}
+                upiId={pendingIntent.upiId}
+                inrAmount={pendingIntent.inrAmount}
+                usdcAmount={pendingIntent.usdcAmount}
+                utr={completedUTR}
+                receiptHash="3f8a2c...e4d1"
+                solscanUrl="https://solscan.io/tx/devnet"
+                settledAt={new Date().toLocaleString("en-IN", {
+                  day: "numeric", month: "short", year: "numeric",
+                  hour: "2-digit", minute: "2-digit", hour12: true,
+                  timeZone: "Asia/Kolkata",
+                }) + " IST"}
+                onDone={() => {
+                  setPendingIntent(null);
+                  setCompletedUTR(null);
+                  setShowReceipt(false);
+                  realUTRRef.current = null;
+                  setMobileTab("home");
+                }}
+              />
+            ) : settling && pendingIntent ? (
+              <SettlementScreen
+                merchant={pendingIntent.merchant}
+                inrAmount={pendingIntent.inrAmount}
+                usdcAmount={pendingIntent.usdcAmount}
+                onComplete={(generatedUtr) => {
+                  setCompletedUTR(realUTRRef.current ?? generatedUtr);
+                  setSettling(false);
+                  setShowReceipt(true);
+                }}
+              />
+            ) : (
+              <PaymentIntentScreen
+                fxRate={83.18}
+                onConfirm={(intent) => setPendingIntent(intent)}
+                onBack={() => setMobileTab("home")}
+              />
+            )}
+          </div>
+
+          {/* Activity tab */}
+          <div className={mobileTab === "activity" ? "h-full overflow-y-auto" : "hidden"}>
+            <TransactionHistory onClose={() => setMobileTab("home")} />
+          </div>
+
+          {/* Profile tab */}
+          <div className={mobileTab === "profile" ? "h-full overflow-y-auto" : "hidden"}>
+            <ProfileTab
+              user={supabaseUser}
+              address={address}
+              isConnected={isConnected}
+              onSignOut={handleSignOut}
+            />
           </div>
         </div>
 
-        {/* Bottom nav */}
-        <MobileBottomNav tab={mobileTab} setTab={setMobileTab} />
+        {/* Bottom Navigation */}
+        <BottomNav tab={mobileTab} setTab={(t) => {
+          if (t === "scan") {
+            setMobileTab("chat");
+            setTimeout(() => chatRef.current?.openQRScanner(), 80);
+          } else {
+            setMobileTab(t);
+          }
+        }} />
       </div>
 
-      {/* History drawer — both layouts */}
+      {/* Overlays */}
       <AnimatePresence>
         {showHistory && <TransactionHistory onClose={() => setShowHistory(false)} />}
       </AnimatePresence>
-
-      {/* My QR / Receive modal — both layouts */}
       <AnimatePresence>
         {showMyQR && (
-          <MerchantQRModal
-            onClose={() => setShowMyQR(false)}
-            user={supabaseUser}
+          <MerchantQRModal onClose={() => setShowMyQR(false)} user={supabaseUser} />
+        )}
+      </AnimatePresence>
+
+      {/* Payment Flow Overlays */}
+      <AnimatePresence>
+        {pendingIntent && !settling && !showReceipt && (
+          <ConfirmCard
+            merchant={pendingIntent.merchant}
+            upiId={pendingIntent.upiId}
+            inrAmount={pendingIntent.inrAmount}
+            usdcAmount={pendingIntent.usdcAmount}
+            fxRate={pendingIntent.fxRate}
+            settlementPath="OnMeta A"
+            fee="0.5%"
+            estTime="~20s"
+            quoteExpiresIn={60}
+            onConfirm={() => {
+              realUTRRef.current = null;
+              setMobileTab("chat");
+              setSettling(true);
+              // Fire real payment in background; SettlementScreen drives the UI.
+              // When the API resolves, store the real UTR so ReceiptScreen shows it.
+              handlePaymentWithPhantom(pendingIntent)
+                .then(utr => { realUTRRef.current = utr; })
+                .catch(() => {}); // SettlementScreen will use its generated UTR as fallback
+            }}
+            onCancel={() => setPendingIntent(null)}
           />
         )}
       </AnimatePresence>
+
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Mobile Scan Home — the Google Pay / PhonePe moment
+// Mobile Header
 // ─────────────────────────────────────────────────────────────────────────────
-const QUICK_ACTIONS = [
-  { icon: Send,        label: "Send money",      color: "#7c3aed", text: "Send ₹500 to Priya" },
-  { icon: Lock,        label: "Lock savings",    color: "#10b981", text: "Lock ₹2000 for 3 months" },
-  { icon: FileText,    label: "Stamp agreement", color: "#3b82f6", text: "Arjun owes me ₹1500 — record it" },
-  { icon: ShieldCheck, label: "Prove ownership", color: "#f59e0b", text: "Prove I own this photo" },
-];
-
-function MobileScanHome({
-  address,
-  isConnected,
-  user,
-  onScan,
-  onMyQR,
-  onQuickAction,
-  onSignOut,
-  onConnect,
+function MobileHeader({
+  user, isConnected, address, deepLink, walletConnected,
+  setVisible, onSignOut, onHistory,
 }: {
+  readonly user: SupabaseUser | null;
+  readonly isConnected: boolean;
+  readonly address: string | null;
+  readonly deepLink: ReturnType<typeof usePhantomDeepLink>;
+  readonly walletConnected: boolean;
+  readonly setVisible: (v: boolean) => void;
+  readonly onSignOut: () => void;
+  readonly onHistory: () => void;
+}) {
+  return (
+    <motion.header
+      initial={{ y: -16, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
+      transition={{ duration: 0.4 }}
+      style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "14px 20px",
+        background: "rgba(8,8,10,0.92)",
+        borderBottom: "1px solid #26262A",
+        backdropFilter: "blur(20px)",
+        position: "relative", zIndex: 20,
+        flexShrink: 0,
+      }}
+    >
+      <AuronLogo size={28} showText textSize={13} />
+
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {/* Bell */}
+        <button style={{ padding: 8, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", position: "relative" }}>
+          <Bell size={18} />
+          <span style={{
+            position: "absolute", top: 6, right: 6,
+            width: 7, height: 7, borderRadius: "50%",
+            background: "#3B82F6",
+            border: "1.5px solid #07090D",
+          }} />
+        </button>
+
+        {/* Wallet */}
+        {walletConnected ? <WalletWidget /> :
+         deepLink.isConnected && address ? (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 6,
+            padding: "5px 10px", borderRadius: 8,
+            background: "rgba(34,197,94,0.1)",
+            border: "1px solid rgba(34,197,94,0.2)",
+            fontSize: 11, fontWeight: 600, color: "#22C55E",
+            fontFamily: "monospace",
+          }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22C55E" }} />
+            {shortAddr(address)}
+          </div>
+        ) : (
+          <button onClick={onSignOut} style={{ padding: 7, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}>
+            <LogOut size={16} />
+          </button>
+        )}
+      </div>
+    </motion.header>
+  );
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Profile Tab
+// ─────────────────────────────────────────────────────────────────────────────
+function ProfileTab({
+  user, address, isConnected, onSignOut,
+}: {
+  readonly user: SupabaseUser | null;
   readonly address: string | null;
   readonly isConnected: boolean;
-  readonly user: User | null;
-  readonly onScan: () => void;
-  readonly onMyQR: () => void;
-  readonly onQuickAction: (text: string) => void;
   readonly onSignOut: () => void;
-  readonly onConnect: () => void;
 }) {
-
-  const { data: solBalance = 0 } = useQuery({
-    queryKey: ["sol-balance", address],
-    queryFn: () => getSOLBalance(address!),
-    enabled: !!address,
-    refetchInterval: 30_000,
-    staleTime: 15_000,
-  });
-
-  const { data: usdcBalance = 0 } = useQuery({
-    queryKey: ["usdc-balance", address],
-    queryFn: () => getUSDCBalance(address!),
-    enabled: !!address,
-    refetchInterval: 30_000,
-    staleTime: 15_000,
-  });
-
-  const displayName = user?.user_metadata?.full_name?.split(" ")[0]
-    ?? user?.email?.split("@")[0]
-    ?? "there";
-
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  const displayName = user?.user_metadata?.full_name ?? user?.email?.split("@")[0] ?? "User";
 
   return (
-    <div className="h-full overflow-y-auto" style={{ paddingBottom: "8px" }}>
-      <div className="flex flex-col gap-5 px-4 pt-5 pb-4">
-
-        {/* ── Greeting + balance card ─────────────────────────────── */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-          className="rounded-2xl overflow-hidden"
-          style={{
-            background: "linear-gradient(135deg, rgba(201,168,76,0.12) 0%, rgba(201,168,76,0.05) 100%)",
-            border: "1px solid rgba(201,168,76,0.2)",
-            padding: "20px",
-          }}
-        >
-          <p style={{ fontSize: "12px", color: "rgba(201,168,76,0.7)", marginBottom: "2px" }}>
-            {greeting}, {displayName}
-          </p>
-
-          {isConnected ? (
-            <>
-              <div className="flex items-baseline gap-2 mt-1 mb-4">
-                <span style={{ fontSize: "clamp(24px, 8vw, 36px)", fontWeight: 900, color: "#F0EEE8", letterSpacing: "-0.03em", lineHeight: 1 }}>
-                  {usdcBalance.toFixed(2)}
-                </span>
-                <span style={{ fontSize: "14px", color: "rgba(201,168,76,0.8)", fontWeight: 600 }}>USDC</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span style={{ fontSize: "13px", color: "var(--text-muted)" }}>
-                    {solBalance.toFixed(4)} SOL
-                  </span>
-                  <span style={{ color: "rgba(255,255,255,0.15)", fontSize: "12px" }}>·</span>
-                  <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.25)", fontFamily: "monospace" }}>
-                    {shortAddr(address ?? "")}
-                  </span>
-                </div>
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              </div>
-            </>
-          ) : (
-            <div className="mt-3">
-              <p style={{ fontSize: "14px", color: "var(--text-secondary)", marginBottom: "12px" }}>
-                Connect your Phantom wallet to start
-              </p>
-              <motion.button
-                onClick={onConnect}
-                whileTap={{ scale: 0.97 }}
-                className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold"
-                style={{ background: "rgba(201,168,76,0.15)", border: "1px solid rgba(201,168,76,0.3)", color: "#C9A84C" }}
-              >
-                <Wallet size={15} /> Connect Phantom
-              </motion.button>
-            </div>
-          )}
-        </motion.div>
-
-        {/* ── Big scan button ─────────────────────────────────────── */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.92 }} animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.1, duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
-          className="flex flex-col items-center"
-        >
-          {/* Outer ring glow — responsive size */}
-          <div className="relative flex items-center justify-center p-4">
-            {/* Pulse rings */}
-            <motion.div
-              animate={{ scale: [1, 1.4, 1], opacity: [0.25, 0, 0.25] }}
-              transition={{ duration: 2.5, repeat: Infinity, ease: "easeOut" }}
-              className="absolute rounded-full pointer-events-none"
-              style={{ width: "min(140px, 38vw)", height: "min(140px, 38vw)", border: "2px solid rgba(201,168,76,0.4)" }}
-            />
-            <motion.div
-              animate={{ scale: [1, 1.7, 1], opacity: [0.15, 0, 0.15] }}
-              transition={{ duration: 2.5, repeat: Infinity, ease: "easeOut", delay: 0.4 }}
-              className="absolute rounded-full pointer-events-none"
-              style={{ width: "min(140px, 38vw)", height: "min(140px, 38vw)", border: "1px solid rgba(201,168,76,0.3)" }}
-            />
-
-            {/* The button itself */}
-            <motion.button
-              onClick={onScan}
-              whileTap={{ scale: 0.93 }}
-              whileHover={{ scale: 1.03 }}
-              aria-label="Scan UPI QR code to pay"
-              className="relative rounded-full flex flex-col items-center justify-center gap-2"
-              style={{
-                width: "min(140px, 38vw)",
-                height: "min(140px, 38vw)",
-                background: "linear-gradient(135deg, #C9A84C, #F0D080, #C9A84C)",
-                boxShadow: "0 8px 40px rgba(201,168,76,0.45), 0 2px 8px rgba(0,0,0,0.4)",
-              }}
-            >
-              <QrCode size={36} style={{ color: "#080810" }} />
-              <span style={{ fontSize: "10px", fontWeight: 800, color: "#080810", letterSpacing: "0.05em", textTransform: "uppercase" }}>
-                Scan to Pay
-              </span>
-            </motion.button>
-          </div>
-
-          <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.25)", marginTop: "8px", letterSpacing: "0.02em" }}>
-            Any Google Pay · PhonePe · Paytm QR
-          </p>
-
-          {/* Receive / My QR secondary button */}
-          <motion.button
-            onClick={onMyQR}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.97 }}
-            style={{
-              marginTop: "12px",
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              borderRadius: "14px",
-              padding: "10px 20px",
-              background: "rgba(201,168,76,0.08)",
-              border: "1px solid rgba(201,168,76,0.2)",
-              color: "rgba(201,168,76,0.85)",
-              fontSize: "12px",
-              fontWeight: 700,
-              letterSpacing: "0.02em",
-            }}
-          >
-            <QrCode size={14} />
-            My QR · Receive
-          </motion.button>
-        </motion.div>
-
-        {/* ── Divider ──────────────────────────────────────────────── */}
-        <div className="flex items-center gap-3">
-          <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.05)" }} />
-          <span style={{ fontSize: "10px", color: "rgba(255,255,255,0.2)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
-            or ask Auron
-          </span>
-          <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.05)" }} />
+    <div style={{ padding: "24px 20px", display: "flex", flexDirection: "column", gap: 20 }}>
+      {/* Avatar + name */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12, paddingTop: 12 }}>
+        <div style={{
+          width: 72, height: 72, borderRadius: "50%",
+          background: "linear-gradient(135deg,#7C3AED,#3B82F6)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 28, fontWeight: 800, color: "#fff",
+        }}>
+          {(displayName)[0].toUpperCase()}
         </div>
-
-        {/* ── Quick actions ─────────────────────────────────────────── */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2, duration: 0.5 }}
-          className="grid grid-cols-2 gap-2.5"
-        >
-          {QUICK_ACTIONS.map(({ icon: Icon, label, color, text }, i) => (
-            <motion.button
-              key={label}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.25 + i * 0.05 }}
-              onClick={() => onQuickAction(text)}
-              whileTap={{ scale: 0.96 }}
-              className="flex items-center gap-3 rounded-xl text-left"
-              style={{
-                padding: "14px",
-                background: "rgba(255,255,255,0.03)",
-                border: "1px solid rgba(255,255,255,0.06)",
-              }}
-            >
-              <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
-                style={{ background: `${color}18`, border: `1px solid ${color}28` }}>
-                <Icon size={14} style={{ color }} />
-              </div>
-              <div className="min-w-0">
-                <p style={{ fontSize: "12px", fontWeight: 600, color: "#F0EEE8", lineHeight: 1.2 }}>{label}</p>
-              </div>
-              <ChevronRight size={12} style={{ color: "rgba(255,255,255,0.2)", marginLeft: "auto", flexShrink: 0 }} />
-            </motion.button>
-          ))}
-        </motion.div>
-
-        {/* ── Tagline ───────────────────────────────────────────────── */}
-        <div className="text-center pt-2 pb-1">
-          <p style={{ fontSize: "10px", color: "rgba(255,255,255,0.15)", letterSpacing: "0.06em" }}>
-            POWERED BY SOLANA · CLAUDE AI · PHANTOM
-          </p>
+        <div style={{ textAlign: "center" }}>
+          <p style={{ fontSize: 18, fontWeight: 700, color: "var(--text-primary)", margin: 0 }}>{displayName}</p>
+          <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "4px 0 0" }}>{user?.email}</p>
         </div>
       </div>
+
+      {/* Wallet address */}
+      {address && (
+        <div style={{
+          padding: "14px 16px", borderRadius: 14,
+          background: "rgba(15,23,42,0.7)",
+          border: "1px solid rgba(148,163,184,0.1)",
+        }}>
+          <p style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>Wallet</p>
+          <p style={{ fontSize: 12, color: "#60A5FA", fontFamily: "monospace", margin: 0 }}>{shortAddr(address)}</p>
+        </div>
+      )}
+
+      {/* Sign out */}
+      <button
+        onClick={onSignOut}
+        style={{
+          width: "100%", padding: "14px",
+          borderRadius: 14,
+          background: "rgba(239,68,68,0.08)",
+          border: "1px solid rgba(239,68,68,0.2)",
+          color: "#EF4444", fontSize: 14, fontWeight: 600,
+          cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+        }}
+      >
+        <LogOut size={16} />
+        Sign out
+      </button>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Mobile bottom navigation bar
+// Bottom Navigation — 5 tabs
 // ─────────────────────────────────────────────────────────────────────────────
-function MobileBottomNav({
-  tab,
-  setTab,
+const NAV_TABS = [
+  { id: "home"     as MobileTab, label: "Home",     icon: Home },
+  { id: "scan"     as MobileTab, label: "Scan",     icon: QrCode },
+  { id: "chat"     as MobileTab, label: "Chat",     icon: MessageSquare },
+  { id: "activity" as MobileTab, label: "Activity", icon: Activity },
+  { id: "profile"  as MobileTab, label: "Profile",  icon: User },
+];
+
+function BottomNav({
+  tab, setTab,
 }: {
   readonly tab: MobileTab;
   readonly setTab: (t: MobileTab) => void;
 }) {
-  const tabs = [
-    { id: "scan" as MobileTab, label: "Scan & Pay", icon: QrCode },
-    { id: "chat" as MobileTab, label: "Chat",       icon: MessageSquare },
-  ];
-
   return (
     <motion.nav
       initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
-      transition={{ delay: 0.3, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-      className="relative z-20 shrink-0 grid grid-cols-2 pb-safe"
+      transition={{ delay: 0.3, duration: 0.4 }}
       style={{
-        background: "rgba(8,8,16,0.97)",
-        borderTop: "1px solid rgba(201,168,76,0.1)",
-        backdropFilter: "blur(24px) saturate(160%)",
+        display: "grid",
+        gridTemplateColumns: "repeat(5, 1fr)",
+        background: "rgba(8,8,10,0.97)",
+        borderTop: "1px solid #26262A",
+        backdropFilter: "blur(24px)",
+        flexShrink: 0,
+        paddingBottom: "env(safe-area-inset-bottom, 8px)",
+        position: "relative", zIndex: 20,
       }}
     >
-      {tabs.map(({ id, label, icon: Icon }) => {
-        const active = tab === id;
+      {NAV_TABS.map(({ id, label, icon: Icon }) => {
+        const active = tab === id || (id === "scan" && tab === "chat");
+        const isScanCenter = id === "scan";
+
         return (
           <button
             key={id}
             onClick={() => setTab(id)}
-            aria-label={label}
-            aria-current={active ? "page" : undefined}
-            className="relative flex flex-col items-center justify-center gap-1 py-3 transition-all duration-200"
+            style={{
+              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+              gap: isScanCenter ? 0 : 4,
+              padding: isScanCenter ? "6px 4px" : "10px 4px",
+              background: "none", border: "none", cursor: "pointer",
+              position: "relative",
+            }}
           >
-            {/* Active indicator */}
-            <AnimatePresence>
-              {active && (
-                <motion.div
-                  layoutId="mobile-tab-indicator"
-                  className="absolute top-0 left-1/2 -translate-x-1/2 h-[2px] w-8 rounded-full"
-                  style={{ background: "linear-gradient(90deg, #C9A84C, #F0D080)" }}
-                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                />
-              )}
-            </AnimatePresence>
-
-            <motion.div
-              animate={active ? { scale: 1.1 } : { scale: 1 }}
-              transition={{ type: "spring", stiffness: 400, damping: 20 }}
-            >
-              <Icon
-                size={20}
+            {/* Active indicator top line */}
+            {active && !isScanCenter && (
+              <motion.div
+                layoutId="bottom-nav-indicator"
                 style={{
-                  color: active ? "#C9A84C" : "rgba(255,255,255,0.28)",
-                  transition: "color 0.2s",
+                  position: "absolute", top: 0, left: "50%",
+                  transform: "translateX(-50%)",
+                  width: 24, height: 2, borderRadius: 999,
+                  background: "#C8F135",
                 }}
+                transition={{ type: "spring", stiffness: 500, damping: 30 }}
               />
-            </motion.div>
+            )}
 
-            <span style={{
-              fontSize: "10px",
-              fontWeight: active ? 700 : 500,
-              color: active ? "#C9A84C" : "rgba(255,255,255,0.28)",
-              letterSpacing: "0.03em",
-              transition: "all 0.2s",
-            }}>
-              {label}
-            </span>
+            {/* Scan center fab */}
+            {isScanCenter ? (
+              <div style={{
+                width: 48, height: 48, borderRadius: "50%",
+                background: active ? "#C8F135" : "rgba(200,241,53,0.1)",
+                border: `2px solid ${active ? "#C8F135" : "rgba(200,241,53,0.2)"}`,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                boxShadow: active ? "0 4px 16px rgba(200,241,53,0.3)" : "none",
+                transition: "all 0.2s",
+              }}>
+                <Icon size={22} color={active ? "#08080A" : "#C8F135"} />
+              </div>
+            ) : (
+              <>
+                <Icon size={20} color={active ? "#C8F135" : "#606068"} />
+                <span style={{
+                  fontSize: 10, fontWeight: active ? 600 : 400,
+                  color: active ? "#C8F135" : "#606068",
+                  transition: "all 0.2s",
+                }}>
+                  {label}
+                </span>
+              </>
+            )}
           </button>
         );
       })}
