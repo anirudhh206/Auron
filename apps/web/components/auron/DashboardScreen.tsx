@@ -18,7 +18,6 @@ interface Transaction {
 }
 
 interface DashboardScreenProps {
-  user: SupabaseUser | null;
   address: string | null;
   isConnected: boolean;
   usdcBalance: number;
@@ -27,7 +26,6 @@ interface DashboardScreenProps {
   onScanQR: () => void;
   onTypePayment: () => void;
   onConnect: () => void;
-  onQuickAction: (text: string) => void;
 }
 
 // No mock data — show real transactions only (or empty state)
@@ -355,7 +353,6 @@ function ChatIcon({ color = "#9A9AA8", size = 22 }: { color?: string; size?: num
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export default function DashboardScreen({
-  user,
   address,
   isConnected,
   usdcBalance,
@@ -364,7 +361,6 @@ export default function DashboardScreen({
   onScanQR,
   onTypePayment,
   onConnect,
-  onQuickAction,
 }: DashboardScreenProps) {
   const txs = recentTransactions ?? [];
   const inrEquiv = (usdcBalance * fxRate).toLocaleString("en-IN", { maximumFractionDigits: 2 });

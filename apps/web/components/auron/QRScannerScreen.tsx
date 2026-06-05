@@ -84,7 +84,7 @@ export default function QRScannerScreen({ onScanned, onBack }: QRScannerScreenPr
       const controls = await reader.decodeFromVideoDevice(
         undefined,          // undefined = environment-facing camera
         videoRef.current,
-        (result, err) => {
+        (result, _err) => {
           if (result) {
             const text = result.getText();
             const parsed = parseUPIQR(text);
@@ -108,13 +108,15 @@ export default function QRScannerScreen({ onScanned, onBack }: QRScannerScreenPr
       const stream = videoRef.current?.srcObject as MediaStream | null;
       if (stream) {
         const track = stream.getVideoTracks()[0];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const caps = track?.getCapabilities?.() as any;
         if (caps?.torch) setHasTorch(true);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const errObj = err as { name?: string } | null;
       const denied =
-        err?.name === "NotAllowedError" ||
-        err?.name === "PermissionDeniedError" ||
+        errObj?.name === "NotAllowedError" ||
+        errObj?.name === "PermissionDeniedError" ||
         String(err).includes("Permission denied");
       setErrorMsg(
         denied
@@ -135,6 +137,7 @@ export default function QRScannerScreen({ onScanned, onBack }: QRScannerScreenPr
     if (!stream) return;
     const track = stream.getVideoTracks()[0];
     const next = !torchOn;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (track.applyConstraints as any)({ advanced: [{ torch: next }] });
     setTorchOn(next);
   }, [torchOn]);

@@ -394,7 +394,6 @@ export default function AppPage() {
         />
       ) : (
         <DashboardScreen
-          user={supabaseUser}
           address={address}
           isConnected={isConnected}
           usdcBalance={usdcBalance}
@@ -403,7 +402,6 @@ export default function AppPage() {
           onScanQR={handleScanQR}
           onTypePayment={() => setMobileTab("chat")}
           onConnect={handleConnect}
-          onQuickAction={handleQuickAction}
         />
       )}
     </>
