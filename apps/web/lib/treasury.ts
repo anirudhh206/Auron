@@ -21,10 +21,10 @@
 import { Connection, PublicKey } from "@solana/web3.js";
 import { getAccount, getAssociatedTokenAddress } from "@solana/spl-token";
 
-// USDC mint addresses
+// USDC mint addresses — must match lib/solana.ts
 const USDC_MINT = {
   "mainnet-beta": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-  "devnet":       "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+  "devnet":       "Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr",
 };
 
 export const SPREAD_PERCENT = 0.85;
@@ -40,7 +40,10 @@ export interface TreasuryState {
 
 export async function getTreasuryState(): Promise<TreasuryState> {
   const walletAddress = process.env.NEXT_PUBLIC_FEE_WALLET ?? "";
-  const rpcUrl        = process.env.NEXT_PUBLIC_SOLANA_RPC_URL ?? "https://api.devnet.solana.com";
+  const rpcUrl        = process.env.SOLANA_RPC_URL
+    ?? process.env.NEXT_PUBLIC_HELIUS_RPC_URL
+    ?? process.env.NEXT_PUBLIC_SOLANA_RPC_URL
+    ?? (network === "mainnet-beta" ? "https://api.mainnet-beta.solana.com" : "https://api.devnet.solana.com");
   const network       = (process.env.NEXT_PUBLIC_SOLANA_NETWORK ?? "devnet") as "mainnet-beta" | "devnet";
   const usdcMint      = USDC_MINT[network] ?? USDC_MINT.devnet;
 

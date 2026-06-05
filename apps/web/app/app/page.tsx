@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { useWallet } from "@solana/wallet-adapter-react";
+import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { useQuery } from "@tanstack/react-query";
 import { useStore } from "@/store/useStore";
@@ -64,6 +64,7 @@ const IS_DEMO =
 // ─────────────────────────────────────────────────────────────────────────────
 export default function AppPage() {
   const { publicKey, connected: walletConnected, sendTransaction } = useWallet();
+  const { connection: walletConnection } = useConnection(); // wallet-adapter managed connection
   const { setVisible } = useWalletModal();
   const deepLink = usePhantomDeepLink();
 
@@ -149,6 +150,13 @@ export default function AppPage() {
   ): Promise<ReceiptData> {
     if (!address) throw new Error("Wallet not connected");
 
+    // Guard: user cannot pay using the treasury wallet itself
+    if (publicKey && publicKey.equals(FEE_WALLET)) {
+      throw new Error(
+        "Connected wallet is the Auron treasury. Use a different wallet to make payments."
+      );
+    }
+
     // Balance check — fail fast before building tx
     if (!IS_DEMO && publicKey && usdcBalance < intent.usdcAmount) {
       throw new Error(
@@ -186,19 +194,45 @@ export default function AppPage() {
     } else {
       try {
         transition(paymentId, "building_tx", "Building USDC transfer transaction");
-        const tx   = await buildUSDCTransferTx(publicKey, FEE_WALLET, intent.usdcAmount);
-        const conn = getConnection();
+
+        // Use wallet-adapter's managed connection (stays in sync with Phantom)
+        const conn = walletConnection;
+
+        // Get fresh blockhash right before sending
+        const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash("confirmed");
+        const tx = await buildUSDCTransferTx(publicKey, FEE_WALLET, intent.usdcAmount);
+        tx.recentBlockhash = blockhash; // ensure freshness
 
         transition(paymentId, "awaiting_signature", "Waiting for Phantom signature");
-        const sig = await sendTransaction(tx, conn, {
-          skipPreflight: true,
-          maxRetries: 3,
-        });
+
+        // Send with retry — Phantom's MV3 service worker can disconnect briefly
+        // and throw "Unexpected error". One retry after 800ms fixes it.
+        let sig: string;
+        try {
+          sig = await sendTransaction(tx, conn, { skipPreflight: true, maxRetries: 3 });
+        } catch (firstErr) {
+          const firstMsg = firstErr instanceof Error ? firstErr.message : String(firstErr);
+          const isPortError = firstMsg.toLowerCase().includes("unexpected") ||
+                              firstMsg.toLowerCase().includes("disconnected") ||
+                              firstMsg.toLowerCase().includes("service worker");
+          if (isPortError) {
+            // Phantom service worker woke back up — rebuild tx with fresh blockhash and retry once
+            console.warn("[executePayment] Phantom port disconnected, retrying in 1s…");
+            await new Promise(r => setTimeout(r, 1000));
+            const retry = await conn.getLatestBlockhash("confirmed");
+            const txRetry = await buildUSDCTransferTx(publicKey, FEE_WALLET, intent.usdcAmount);
+            txRetry.recentBlockhash = retry.blockhash;
+            sig = await sendTransaction(txRetry, conn, { skipPreflight: true, maxRetries: 3 });
+            // Update blockhash/height for confirmation
+            Object.assign({ blockhash, lastValidBlockHeight }, retry);
+          } else {
+            throw firstErr;
+          }
+        }
         signature = sig;
 
         // Wait for on-chain confirmation
         transition(paymentId, "tx_pending", `Transaction submitted: ${sig.slice(0, 8)}…`);
-        const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash();
         await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
         transition(paymentId, "tx_confirmed", "On-chain USDC transfer confirmed");
         confirmedSigRef.current = sig;
@@ -537,11 +571,11 @@ export default function AppPage() {
                 <span>{supabaseUser.user_metadata?.full_name ?? supabaseUser.email?.split("@")[0]}</span>
               </div>
             )}
-            <button onClick={() => setShowHistory(true)} style={{ padding: 8, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", borderRadius: 8 }}>
+            <button type="button" aria-label="Transaction history" onClick={() => setShowHistory(true)} className="p-2 rounded-lg bg-transparent border-0 cursor-pointer text-[color:var(--text-muted)]">
               <History size={17} />
             </button>
             {isConnected ? <WalletWidget /> : (
-              <button onClick={handleSignOut} style={{ padding: 8, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer", borderRadius: 8 }}>
+              <button type="button" aria-label="Sign out" onClick={handleSignOut} className="p-2 rounded-lg bg-transparent border-0 cursor-pointer text-[color:var(--text-muted)]">
                 <LogOut size={17} />
               </button>
             )}
@@ -822,7 +856,7 @@ function MobileHeader({
         )}
 
         {/* History */}
-        <button onClick={onHistory} style={{ padding: 7, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}>
+        <button type="button" aria-label="Transaction history" onClick={onHistory} className="p-1.5 bg-transparent border-0 cursor-pointer text-[color:var(--text-muted)]">
           <History size={17} />
         </button>
 
@@ -840,7 +874,7 @@ function MobileHeader({
             {shortAddr(address)}
           </div>
         ) : (
-          <button onClick={onSignOut} style={{ padding: 7, color: "var(--text-muted)", background: "none", border: "none", cursor: "pointer" }}>
+          <button type="button" aria-label="Sign out" onClick={onSignOut} className="p-1.5 bg-transparent border-0 cursor-pointer text-[color:var(--text-muted)]">
             <LogOut size={16} />
           </button>
         )}

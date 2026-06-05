@@ -8,7 +8,7 @@ import {
 } from "@solana/web3.js";
 import {
   getAssociatedTokenAddress,
-  createTransferInstruction,
+  createTransferCheckedInstruction,
   createAssociatedTokenAccountInstruction,
   getAccount,
   TokenAccountNotFoundError,
@@ -168,8 +168,17 @@ export async function buildUSDCTransferTx(
     }
   }
 
+  // TransferChecked includes mint + decimals — wallets (Phantom, Solflare) can
+  // parse this correctly to show balance changes in the signing dialog.
   tx.add(
-    createTransferInstruction(fromATA, toATA, fromPubkey, amount)
+    createTransferCheckedInstruction(
+      fromATA,    // source ATA
+      USDC_MINT,  // mint (required for TransferChecked)
+      toATA,      // destination ATA
+      fromPubkey, // owner/authority of source ATA
+      amount,     // amount in micro-USDC (6 decimals)
+      6,          // USDC decimals
+    )
   );
 
   return tx;
