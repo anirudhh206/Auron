@@ -586,14 +586,14 @@ function SavingsVault() {
               <span style={{ fontSize: 14 }}>🔒</span>
             </div>
             {[
-              ["Amount", <span><span style={{ color: C.usdc }}>250</span> USDC</span>],
-              ["Locked at", "May 14, 2026"],
-              ["Unlocks", <span style={{ color: C.lime }}>Aug 14, 2026</span>],
-              ["Status", <span style={{ color: C.lime, fontFamily: "'Geist Mono', monospace", fontSize: 11 }}>● LOCKED</span>],
-            ].map(([k, v], i) => (
-              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: i < 3 ? `1px solid ${C.border}` : "none" }}>
-                <span style={{ fontSize: 13, color: C.textMuted }}>{k}</span>
-                <span style={{ fontSize: 13, color: C.text }}>{v}</span>
+              { key: "amount", label: "Amount", value: <span key="amount-val"><span style={{ color: C.usdc }}>250</span> USDC</span> },
+              { key: "locked", label: "Locked at", value: "May 14, 2026" },
+              { key: "unlocks", label: "Unlocks", value: <span key="unlocks-val" style={{ color: C.lime }}>Aug 14, 2026</span> },
+              { key: "status", label: "Status", value: <span key="status-val" style={{ color: C.lime, fontFamily: "'Geist Mono', monospace", fontSize: 11 }}>● LOCKED</span> },
+            ].map((item, i) => (
+              <div key={item.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: i < 3 ? `1px solid ${C.border}` : "none" }}>
+                <span style={{ fontSize: 13, color: C.textMuted }}>{item.label}</span>
+                <span style={{ fontSize: 13, color: C.text }}>{item.value}</span>
               </div>
             ))}
             <button style={{
