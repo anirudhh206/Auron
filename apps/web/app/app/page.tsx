@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
-import { PublicKey } from "@solana/web3.js";
 import { useQuery } from "@tanstack/react-query";
 import { useStore } from "@/store/useStore";
 import { usePaymentStore } from "@/store/usePaymentStore";
@@ -32,7 +31,7 @@ import SettlementScreen from "@/components/auron/SettlementScreen";
 import ReceiptScreen from "@/components/auron/ReceiptScreen";
 import QRScannerScreen, { type ScannedUPIData } from "@/components/auron/QRScannerScreen";
 import { usePhantomDeepLink } from "@/hooks/usePhantomDeepLink";
-import { QrCode, MessageSquare, History, LogOut, Bell, Home, Activity, User } from "lucide-react";
+import { QrCode, MessageSquare, History, LogOut, Home, Activity, User } from "lucide-react";
 import AuronLogo from "@/components/AuronLogo";
 import Link from "next/link";
 import type { User as SupabaseUser } from "@supabase/supabase-js";
@@ -298,11 +297,6 @@ export default function AppPage() {
     }
   }
 
-  function handleQuickAction(text: string) {
-    setMobileTab("chat");
-    setTimeout(() => chatRef.current?.submitMessage(text), 80);
-  }
-
   function resetPaymentFlow() {
     setPendingIntent(null);
     setSettling(false);
@@ -495,14 +489,11 @@ export default function AppPage() {
       <div className="md:hidden flex flex-col" style={{ height: "100dvh" }}>
 
         <MobileHeader
-          user={supabaseUser}
-          isConnected={isConnected}
           address={address}
           liveRate={liveRate}
           rateLoading={rateLoading}
           deepLink={deepLink}
           walletConnected={walletConnected}
-          setVisible={setVisible}
           onSignOut={handleSignOut}
           onHistory={() => setShowHistory(true)}
         />
@@ -537,7 +528,6 @@ export default function AppPage() {
             <ProfileTab
               user={supabaseUser}
               address={address}
-              isConnected={isConnected}
               onSignOut={handleSignOut}
             />
           </div>
@@ -651,17 +641,14 @@ function relativeTime(ms: number): string {
 // Mobile Header
 // ─────────────────────────────────────────────────────────────────────────────
 function MobileHeader({
-  user, isConnected, address, liveRate, rateLoading,
-  deepLink, walletConnected, setVisible, onSignOut, onHistory,
+  address, liveRate, rateLoading,
+  deepLink, walletConnected, onSignOut, onHistory,
 }: {
-  readonly user: SupabaseUser | null;
-  readonly isConnected: boolean;
   readonly address: string | null;
   readonly liveRate: number;
   readonly rateLoading: boolean;
   readonly deepLink: ReturnType<typeof usePhantomDeepLink>;
   readonly walletConnected: boolean;
-  readonly setVisible: (v: boolean) => void;
   readonly onSignOut: () => void;
   readonly onHistory: () => void;
 }) {
@@ -727,11 +714,10 @@ function MobileHeader({
 // Profile Tab
 // ─────────────────────────────────────────────────────────────────────────────
 function ProfileTab({
-  user, address, isConnected, onSignOut,
+  user, address, onSignOut,
 }: {
   readonly user: SupabaseUser | null;
   readonly address: string | null;
-  readonly isConnected: boolean;
   readonly onSignOut: () => void;
 }) {
   const displayName = user?.user_metadata?.full_name ?? user?.email?.split("@")[0] ?? "User";
