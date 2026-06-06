@@ -14,15 +14,30 @@
  * Protocol reference: https://docs.phantom.app/phantom-deeplinks/provider-methods/connect
  */
 
-import { handleConnectResponse } from "@/lib/phantom-deeplink";
+import {
+  buildPhantomConnectUrl as _buildPhantomConnectUrl,
+  handleConnectResponse,
+} from "@/lib/phantom-deeplink";
 
 export {
-  buildPhantomConnectUrl,
   getConnectedPublicKey as getStoredWallet,
   clearPhantomSession   as clearStoredWallet,
   isPhantomSessionActive,
   type PhantomConnectResult,
 } from "@/lib/phantom-deeplink";
+
+/**
+ * Zero-arg wrapper — matches the old phantomMobile.ts call signature.
+ * WalletWidget calls buildPhantomConnectUrl() with no args; this fills in
+ * appUrl (window.location.origin) and cluster (from env) automatically.
+ */
+export function buildPhantomConnectUrl(): string {
+  const appUrl  = typeof window !== "undefined" ? window.location.origin : "";
+  const cluster = process.env.NEXT_PUBLIC_SOLANA_NETWORK === "mainnet-beta"
+    ? ("mainnet-beta" as const)
+    : ("devnet" as const);
+  return _buildPhantomConnectUrl(appUrl, cluster);
+}
 
 /**
  * Legacy 1-arg adapter — unpacks URLSearchParams and delegates to
