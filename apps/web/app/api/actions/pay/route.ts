@@ -29,7 +29,7 @@ import {
 } from "@solana/web3.js";
 import {
   getAssociatedTokenAddress,
-  createTransferInstruction,
+  createTransferCheckedInstruction,
   createAssociatedTokenAccountInstruction,
   getAccount,
 } from "@solana/spl-token";
@@ -38,7 +38,7 @@ import { isValidSolanaAddress } from "@/lib/solana";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const APP_URL = "https://auron-mocha.vercel.app";
+const APP_URL = (process.env.NEXT_PUBLIC_APP_URL ?? "https://auron-mocha.vercel.app").replace(/\/$/, "");
 const ICON_URL = `${APP_URL}/icon-512.png`;
 const RPC = process.env.NEXT_PUBLIC_HELIUS_RPC_URL
   ?? (process.env.NEXT_PUBLIC_SOLANA_NETWORK === "mainnet-beta"
@@ -150,12 +150,22 @@ export async function POST(req: NextRequest) {
       );
     } else {
       // USDC transfer (SPL token)
-      const usdcAmount = currency === "INR"
-        ? Math.round((amount / 83) * 1_000_000) // INR → USDC at ~83 rate, 6 decimals
-        : Math.round(amount * 1_000_000);         // USDC, 6 decimals
+      // For INR amounts: fetch live auronRate from /api/rate — never hardcode the FX rate
+      let usdcAmount: number;
+      if (currency === "INR") {
+        const rateRes = await fetch(`${APP_URL}/api/rate`, { cache: "no-store" });
+        if (!rateRes.ok) throw new Error("Failed to fetch live FX rate");
+        const rateData = await rateRes.json() as { auronRate?: number };
+        const auronRate = rateData.auronRate;
+        if (!auronRate || auronRate <= 0) throw new Error("Invalid FX rate received");
+        usdcAmount = Math.round((amount / auronRate) * 1_000_000); // 6 decimals
+      } else {
+        // USDC passed directly — no conversion needed
+        usdcAmount = Math.round(amount * 1_000_000); // 6 decimals
+      }
 
       const fromATA = await getAssociatedTokenAddress(USDC_MINT, payerPubkey);
-      const toATA = await getAssociatedTokenAddress(USDC_MINT, recipientPubkey);
+      const toATA   = await getAssociatedTokenAddress(USDC_MINT, recipientPubkey);
 
       // Create recipient ATA if it doesn't exist
       try {
@@ -168,8 +178,16 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      // TransferChecked — includes mint + decimals so wallets can display balance changes
       tx.add(
-        createTransferInstruction(fromATA, toATA, payerPubkey, usdcAmount)
+        createTransferCheckedInstruction(
+          fromATA,      // source ATA
+          USDC_MINT,    // mint (required for TransferChecked)
+          toATA,        // destination ATA
+          payerPubkey,  // owner/authority of source ATA
+          usdcAmount,   // amount in micro-USDC (6 decimals)
+          6,            // USDC decimals
+        )
       );
     }
 
