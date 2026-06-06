@@ -97,22 +97,32 @@ export function handleConnectResponse(
       dappKeypair.secretKey
     );
     const decrypted = decryptPayload(data, nonce, sharedSecret);
-    if (!decrypted) return null;
+    if (!decrypted) {
+      console.error("[phantom-deeplink] nacl.box.open.after returned null — sharedSecret mismatch or corrupted data");
+      return null;
+    }
 
-    const result = decrypted as unknown as PhantomConnectResult;
+    // Phantom sends snake_case: { public_key, session }
+    // Accept both snake_case (real Phantom) and camelCase (future-proofing)
+    const publicKey = (decrypted.public_key ?? decrypted.publicKey) as string | undefined;
+    const session   = decrypted.session as string | undefined;
 
-    // Validate before persisting — guard against undefined being coerced to string
-    if (!result.publicKey || typeof result.publicKey !== "string") {
-      console.error("[phantom-deeplink] Missing publicKey in Phantom response");
+    if (!publicKey || typeof publicKey !== "string") {
+      console.error("[phantom-deeplink] Missing public_key in Phantom payload. Keys present:", Object.keys(decrypted));
+      return null;
+    }
+    if (!session || typeof session !== "string") {
+      console.error("[phantom-deeplink] Missing session in Phantom payload");
       return null;
     }
 
     localStorage.setItem(KEY_PHANTOM_PUBKEY, phantomEncryptionPublicKey);
-    localStorage.setItem(KEY_PHANTOM_SESSION, result.session);
-    localStorage.setItem("auron_connected_pubkey", result.publicKey);
+    localStorage.setItem(KEY_PHANTOM_SESSION, session);
+    localStorage.setItem("auron_connected_pubkey", publicKey);
 
-    return result;
-  } catch {
+    return { publicKey, session };
+  } catch (err) {
+    console.error("[phantom-deeplink] handleConnectResponse exception:", err);
     return null;
   }
 }
@@ -220,7 +230,27 @@ export function isPhantomSessionActive(): boolean {
   );
 }
 
+/**
+ * Clears the Phantom *session* (wallet connection + pending actions).
+ * Does NOT remove KEY_DAPP_SECRET — the dApp keypair must be stable across
+ * connect/disconnect cycles. If we regenerated it on disconnect, the next
+ * connect URL would use a new public key but any in-flight Phantom redirect
+ * would still encrypt with the old one, causing decryption failure.
+ */
 export function clearPhantomSession(): void {
+  // DO NOT remove KEY_DAPP_SECRET here — see comment above
+  localStorage.removeItem(KEY_PHANTOM_PUBKEY);
+  localStorage.removeItem(KEY_PHANTOM_SESSION);
+  localStorage.removeItem("auron_connected_pubkey");
+  localStorage.removeItem(KEY_PENDING_ACTION);
+}
+
+/**
+ * Full reset — only call when user explicitly wants to wipe everything
+ * (e.g. clearing app data, factory reset). This WILL break any pending
+ * Phantom redirect that was already sent.
+ */
+export function clearAllPhantomData(): void {
   localStorage.removeItem(KEY_DAPP_SECRET);
   localStorage.removeItem(KEY_PHANTOM_PUBKEY);
   localStorage.removeItem(KEY_PHANTOM_SESSION);
