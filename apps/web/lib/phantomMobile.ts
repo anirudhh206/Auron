@@ -2,9 +2,9 @@
  * Phantom Mobile Connect — deep link protocol (legacy wrapper)
  *
  * @deprecated — use lib/phantom-deeplink.ts directly.
- * This file re-exports from phantom-deeplink.ts so any code still importing
- * from here keeps working without a migration. Both files now share the same
- * localStorage keys and dApp keypair.
+ * This file exists so legacy call-sites (WalletWidget, ConnectWalletButton)
+ * keep working without migration. Both files share the same localStorage keys
+ * and dApp keypair via phantom-deeplink.ts.
  *
  * Why sessionStorage was replaced with localStorage:
  *   On Android, when a deep link opens Phantom, the browser tab is
@@ -14,17 +14,42 @@
  * Protocol reference: https://docs.phantom.app/phantom-deeplinks/provider-methods/connect
  */
 
+import { handleConnectResponse } from "@/lib/phantom-deeplink";
+
 export {
   buildPhantomConnectUrl,
-  handleConnectResponse   as parsePhantomConnectResponse,
-  getConnectedPublicKey   as getStoredWallet,
-  clearPhantomSession     as clearStoredWallet,
+  getConnectedPublicKey as getStoredWallet,
+  clearPhantomSession   as clearStoredWallet,
   isPhantomSessionActive,
   type PhantomConnectResult,
 } from "@/lib/phantom-deeplink";
 
-// storeConnectedWallet is a no-op here — phantom-deeplink handles storage
-// internally inside handleConnectResponse. Exported for call-site compat.
+/**
+ * Legacy 1-arg adapter — unpacks URLSearchParams and delegates to
+ * handleConnectResponse(phantomEncryptionPublicKey, nonce, data).
+ *
+ * WalletWidget calls: parsePhantomConnectResponse(new URLSearchParams(...))
+ * Old phantomMobile.ts accepted that signature; this preserves compat.
+ */
+export function parsePhantomConnectResponse(
+  params: URLSearchParams
+) {
+  const phantomEncryptionPublicKey = params.get("phantom_encryption_public_key");
+  const nonce = params.get("nonce");
+  const data  = params.get("data");
+
+  if (!phantomEncryptionPublicKey || !nonce || !data) return null;
+
+  // User rejected
+  if (params.get("errorCode")) {
+    console.error("[phantomMobile] Phantom rejected:", params.get("errorMessage"));
+    return null;
+  }
+
+  return handleConnectResponse(phantomEncryptionPublicKey, nonce, data);
+}
+
+// storeConnectedWallet is a no-op — handleConnectResponse stores internally
 export function storeConnectedWallet(_publicKey: string): void {
-  // handled inside handleConnectResponse — no manual call needed
+  // Handled inside handleConnectResponse — no manual call needed
 }
