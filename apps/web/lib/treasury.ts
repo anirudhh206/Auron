@@ -40,11 +40,11 @@ export interface TreasuryState {
 
 export async function getTreasuryState(): Promise<TreasuryState> {
   const walletAddress = process.env.NEXT_PUBLIC_FEE_WALLET ?? "";
+  const network       = (process.env.NEXT_PUBLIC_SOLANA_NETWORK ?? "devnet") as "mainnet-beta" | "devnet";
   const rpcUrl        = process.env.SOLANA_RPC_URL
     ?? process.env.NEXT_PUBLIC_HELIUS_RPC_URL
     ?? process.env.NEXT_PUBLIC_SOLANA_RPC_URL
     ?? (network === "mainnet-beta" ? "https://api.mainnet-beta.solana.com" : "https://api.devnet.solana.com");
-  const network       = (process.env.NEXT_PUBLIC_SOLANA_NETWORK ?? "devnet") as "mainnet-beta" | "devnet";
   const usdcMint      = USDC_MINT[network] ?? USDC_MINT.devnet;
 
   const unavailable: TreasuryState = {
