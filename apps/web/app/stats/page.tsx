@@ -497,8 +497,12 @@ export default function StatsPage() {
   const [data,        setData]        = useState<StatsData | null>(null);
   const [loading,     setLoading]     = useState(true);
   const [error,       setError]       = useState<string | null>(null);
-  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+  // null initial value avoids the SSR/client new Date() mismatch that causes
+  // React hydration errors (server renders one timestamp, client another).
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
   const [refreshing,  setRefreshing]  = useState(false);
+  // mounted flag gates any time-dependent renders to client-only
+  const [mounted,     setMounted]     = useState(false);
 
   const fetchStats = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -519,6 +523,7 @@ export default function StatsPage() {
   }, []);
 
   useEffect(() => {
+    setMounted(true);
     fetchStats();
     const iv = setInterval(() => fetchStats(true), 30_000);
     return () => clearInterval(iv);
@@ -578,14 +583,23 @@ export default function StatsPage() {
               className="stats-refresh-btn"
               onClick={() => fetchStats(true)}
               disabled={refreshing}
+              title="Refresh stats"
             >
               <RefreshCw
                 size={11}
                 style={{ animation: refreshing ? "spin 1s linear infinite" : "none" }}
               />
-              {lastRefresh.toLocaleTimeString("en-IN", {
-                hour: "2-digit", minute: "2-digit", second: "2-digit",
-              })}
+              {/* Timestamp is client-only — server renders "--:--:--" to prevent
+                  hydration mismatch from new Date() diverging between SSR and CSR */}
+              <span style={{ fontFamily: "'Geist Mono',monospace", fontSize: 10, color: C.dim }}>
+                {mounted && lastRefresh
+                  ? lastRefresh.toLocaleTimeString("en-IN", {
+                      hour:   "2-digit",
+                      minute: "2-digit",
+                      second: "2-digit",
+                    })
+                  : "--:--:--"}
+              </span>
             </button>
           </div>
 
