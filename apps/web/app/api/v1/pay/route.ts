@@ -19,6 +19,7 @@ import { NextRequest, NextResponse }  from "next/server";
 import { verifyUsdcTransfer }          from "@/lib/verify-tx";
 import { initiateOnMetaPayout }        from "@/lib/onmeta";
 import { checkLiquidityGate }          from "@/lib/liquidity";
+import { validateApiKey, type AgentContext } from "@/lib/api-key";
 // Razorpay fallback is handled by the settlement worker (PATH B — treasury + Razorpay X).
 // v1/pay only dispatches PATH A (OnMeta). Worker retries handle PATH B automatically.
 import {
@@ -174,6 +175,25 @@ function validate(
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const start = Date.now();
 
+  // ── API key auth (agent callers) ────────────────────────────────────────────
+  // Human wallet flow (Phantom) sends no x-api-key → passes through.
+  // Agent callers MUST send x-api-key → validated against api_keys table.
+  let agentContext: AgentContext | null = null;
+  const rawApiKey = req.headers.get("x-api-key");
+  const keyCheck  = await validateApiKey(rawApiKey);
+
+  if (keyCheck.present) {
+    if (!keyCheck.result.valid) {
+      const reason = keyCheck.result.reason;
+      console.warn(`[v1/pay] API key rejected reason=${reason}`);
+      return NextResponse.json(
+        { error: reason === "revoked_key" ? "API key has been revoked" : "Invalid API key", code: reason },
+        { status: 401 }
+      );
+    }
+    agentContext = keyCheck.result.agent;
+  }
+
   // ── Parse body ──────────────────────────────────────────────────────────────
   let body: unknown;
   try { body = await req.json(); }
@@ -185,9 +205,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
   const d = validation.data;
 
+  const callerTag = agentContext ? `agent=${agentContext.agentId}` : "caller=human";
   console.log(
     `[v1/pay] START paymentId=${d.paymentId} merchant=${d.merchantUpiId} ` +
-    `inr=₹${d.inrAmount} usdc=${d.usdcAmount} provider=${d.provider}`
+    `inr=₹${d.inrAmount} usdc=${d.usdcAmount} provider=${d.provider} ${callerTag}`
   );
 
   // ── 1. Idempotency check ─────────────────────────────────────────────────────
