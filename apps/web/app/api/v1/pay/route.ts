@@ -327,7 +327,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const provider = d.provider ?? "razorpay";
 
   if (txnId) {
-    const stlResult = await createSettlement({ transaction_id: txnId, provider, status: "pending" });
+    // Create as "processing" (not "pending") so the settlement worker cannot claim
+    // this row while v1/pay is actively dispatching. If dispatch gets a retryable
+    // failure below, we downgrade back to "pending" so the worker picks it up.
+    const stlResult = await createSettlement({ transaction_id: txnId, provider, status: "processing" });
     settlementId = stlResult.ok ? stlResult.data.id : null;
     await transitionTransaction(txnId, "settling", { reason: `Settlement dispatched via ${provider}` });
   }
