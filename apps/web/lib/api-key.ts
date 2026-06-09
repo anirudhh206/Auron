@@ -68,13 +68,15 @@ export async function validateApiKey(
 
   const hash = hashKey(rawKey.trim());
 
-  let data: {
-    agent_id:       string;
-    agent_name:     string;
+  type ApiKeyRow = {
+    agent_id:        string;
+    agent_name:      string;
     daily_limit_inr: number;
-    is_active:      boolean;
-    revoked_at:     string | null;
-  } | null = null;
+    is_active:       boolean;
+    revoked_at:      string | null;
+  };
+
+  let data: ApiKeyRow | null = null;
 
   try {
     const res = await db()
@@ -83,7 +85,7 @@ export async function validateApiKey(
       .eq("key_hash", hash)
       .single();
 
-    data = res.data as typeof data;
+    data = (res.data as ApiKeyRow | null) ?? null;
   } catch {
     return { present: true, result: { valid: false, reason: "db_error" } };
   }
@@ -97,12 +99,10 @@ export async function validateApiKey(
   }
 
   // Fire-and-forget last_used_at update — never block the request for this
-  db()
+  void db()
     .from("api_keys")
     .update({ last_used_at: new Date().toISOString() })
-    .eq("key_hash", hash)
-    .then(() => {/* intentionally silent */})
-    .catch(() => {/* intentionally silent */});
+    .eq("key_hash", hash);
 
   return {
     present: true,
