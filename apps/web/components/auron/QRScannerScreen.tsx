@@ -13,6 +13,7 @@ export interface ScannedUPIData {
 interface QRScannerScreenProps {
   onScanned: (data: ScannedUPIData) => void;
   onBack: () => void;
+  onSwitchToChat?: (data?: { upiId: string; merchantName: string }) => void;
 }
 
 // ─── Colours ──────────────────────────────────────────────────────────────────
@@ -54,7 +55,7 @@ function parseUPIQR(raw: string): ScannedUPIData | null {
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
-export default function QRScannerScreen({ onScanned, onBack }: QRScannerScreenProps) {
+export default function QRScannerScreen({ onScanned, onBack, onSwitchToChat }: QRScannerScreenProps) {
   const videoRef    = useRef<HTMLVideoElement>(null);
   const controlsRef = useRef<{ stop: () => void } | null>(null);
 
@@ -431,7 +432,14 @@ export default function QRScannerScreen({ onScanned, onBack }: QRScannerScreenPr
 
         {/* Type manually */}
         <button
-          onClick={() => { stopScanner(); onBack(); }}
+          onClick={() => {
+            stopScanner();
+            if (onSwitchToChat) {
+              onSwitchToChat(scanned ? { upiId: scanned.upiId, merchantName: scanned.merchantName } : undefined);
+            } else {
+              onBack();
+            }
+          }}
           style={{
             display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
             background: "none", border: "none", cursor: "pointer",

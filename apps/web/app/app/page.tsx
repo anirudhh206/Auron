@@ -362,6 +362,13 @@ export default function AppPage() {
   // ── Navigation helpers ──────────────────────────────────────────────────────
   function handleScanQR() { setMobileTab("qrscan"); }
 
+  function handleSwitchToChat(data?: { upiId: string; merchantName: string }) {
+    if (data) {
+      setQrPrefill(`Pay ${data.merchantName} at ${data.upiId}`);
+    }
+    setMobileTab("chat");
+  }
+
   function handleQRScanned(data: ScannedUPIData) {
     // Always go to QRAmountScreen — prefill amount if the QR contained one,
     // otherwise leave it blank for the user to type.
@@ -592,6 +599,7 @@ export default function AppPage() {
               <QRScannerScreen
                 onScanned={handleQRScanned}
                 onBack={() => setMobileTab("home")}
+                onSwitchToChat={handleSwitchToChat}
               />
             ) : (
               paymentFlow
@@ -622,6 +630,7 @@ export default function AppPage() {
             <QRScannerScreen
               onScanned={handleQRScanned}
               onBack={() => setMobileTab("home")}
+              onSwitchToChat={handleSwitchToChat}
             />
           )}
 
