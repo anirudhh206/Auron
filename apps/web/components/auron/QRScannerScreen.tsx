@@ -65,6 +65,9 @@ export default function QRScannerScreen({ onScanned, onBack, onSwitchToChat }: Q
   const [torchOn, setTorchOn]     = useState(false);
   const [hasTorch, setHasTorch]   = useState(false);
   const [scanFlash, setScanFlash] = useState(false);
+  const [nonUpiQR, setNonUpiQR]   = useState<string | null>(null);
+  // Prevents re-triggering on every ZXing frame after a non-UPI QR is detected
+  const nonUpiDetectedRef = useRef(false);
 
   const stopScanner = useCallback(() => {
     controlsRef.current?.stop();
@@ -75,6 +78,8 @@ export default function QRScannerScreen({ onScanned, onBack, onSwitchToChat }: Q
   const startScanner = useCallback(async () => {
     setStatus("init");
     setErrorMsg("");
+    setNonUpiQR(null);
+    nonUpiDetectedRef.current = false;
 
     try {
       const { BrowserQRCodeReader } = await import("@zxing/browser");
@@ -96,9 +101,15 @@ export default function QRScannerScreen({ onScanned, onBack, onSwitchToChat }: Q
               stopScanner();
               if (navigator.vibrate) navigator.vibrate([50, 30, 80]);
               setTimeout(() => onScanned(parsed), 700);
+            } else if (!nonUpiDetectedRef.current) {
+              // A QR was decoded but it's not a UPI QR — fire once, stop scanning
+              nonUpiDetectedRef.current = true;
+              stopScanner();
+              if (navigator.vibrate) navigator.vibrate(80);
+              setNonUpiQR(text);
             }
           }
-          // err is non-null on every frame that has no QR — normal, ignore
+          // _scanErr is non-null on every frame with no QR — normal, ignore
         }
       );
 
@@ -292,7 +303,7 @@ export default function QRScannerScreen({ onScanned, onBack, onSwitchToChat }: Q
           )}
         </AnimatePresence>
 
-        {/* Error */}
+        {/* Camera error */}
         {status === "error" && (
           <motion.div
             initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
@@ -318,17 +329,91 @@ export default function QRScannerScreen({ onScanned, onBack, onSwitchToChat }: Q
                 {errorMsg}
               </p>
             </div>
-            <button
-              onClick={startScanner}
-              style={{
-                padding: "10px 28px", borderRadius: 10,
-                background: C.lime, border: "none",
-                fontFamily: "'Geist',sans-serif", fontSize: 13, fontWeight: 700,
-                color: "#0A0A08", cursor: "pointer",
-              }}
-            >
-              Try Again
-            </button>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", maxWidth: 240 }}>
+              <button
+                onClick={startScanner}
+                style={{
+                  padding: "10px 28px", borderRadius: 10,
+                  background: C.lime, border: "none",
+                  fontFamily: "'Geist',sans-serif", fontSize: 13, fontWeight: 700,
+                  color: "#0A0A08", cursor: "pointer", width: "100%",
+                }}
+              >
+                Try Again
+              </button>
+              {onSwitchToChat && (
+                <button
+                  onClick={() => { onSwitchToChat(); }}
+                  style={{
+                    padding: "10px 28px", borderRadius: 10,
+                    background: "transparent", border: `1px solid ${C.border}`,
+                    fontFamily: "'Geist Mono',sans-serif", fontSize: 12, fontWeight: 500,
+                    color: C.muted, cursor: "pointer", width: "100%", letterSpacing: "0.05em",
+                  }}
+                >
+                  TYPE UPI ID INSTEAD
+                </button>
+              )}
+            </div>
+          </motion.div>
+        )}
+
+        {/* Non-UPI QR detected */}
+        {nonUpiQR !== null && (
+          <motion.div
+            initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
+            style={{
+              position: "absolute", inset: 0, zIndex: 4,
+              display: "flex", flexDirection: "column",
+              alignItems: "center", justifyContent: "center",
+              padding: "0 32px", gap: 20,
+            }}
+          >
+            <div style={{
+              width: 64, height: 64, borderRadius: "50%",
+              background: "rgba(245,166,35,0.1)", border: "1px solid rgba(245,166,35,0.35)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#F5A623" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </div>
+            <div style={{ textAlign: "center" }}>
+              <p style={{ fontSize: 15, fontWeight: 600, color: C.text, margin: "0 0 8px" }}>
+                Not a UPI QR code
+              </p>
+              <p style={{ fontFamily: "'Geist Mono',monospace", fontSize: 12, color: C.muted, margin: 0, lineHeight: 1.65 }}>
+                This QR doesn&apos;t have a UPI payment address.{"\n"}
+                Try a merchant&apos;s payment QR, or type the UPI ID instead.
+              </p>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%", maxWidth: 240 }}>
+              <button
+                onClick={startScanner}
+                style={{
+                  padding: "10px 28px", borderRadius: 10,
+                  background: C.lime, border: "none",
+                  fontFamily: "'Geist',sans-serif", fontSize: 13, fontWeight: 700,
+                  color: "#0A0A08", cursor: "pointer", width: "100%",
+                }}
+              >
+                Scan Again
+              </button>
+              {onSwitchToChat && (
+                <button
+                  onClick={() => { onSwitchToChat(); }}
+                  style={{
+                    padding: "10px 28px", borderRadius: 10,
+                    background: "transparent", border: `1px solid ${C.border}`,
+                    fontFamily: "'Geist Mono',sans-serif", fontSize: 12, fontWeight: 500,
+                    color: C.muted, cursor: "pointer", width: "100%", letterSpacing: "0.05em",
+                  }}
+                >
+                  TYPE UPI ID INSTEAD
+                </button>
+              )}
+            </div>
           </motion.div>
         )}
 
