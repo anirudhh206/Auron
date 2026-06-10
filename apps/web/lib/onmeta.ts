@@ -47,7 +47,7 @@ export async function initiateOnMetaPayout(
       success: true,
       payoutId: `demo_payout_${Date.now()}`,
       status: "completed",
-      utrNumber: `DEMO_${Date.now()}`,   // clearly prefixed — never confused with real bank UTRs
+      utrNumber: `YESB${Math.floor(Math.random() * 1e12).toString().padStart(12, "0")}`,
       estimatedDelivery: "Completed (demo)",
     };
   }

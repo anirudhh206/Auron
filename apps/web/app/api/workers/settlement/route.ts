@@ -245,7 +245,19 @@ async function _executePayout(
   provider: string,
   txn: { usdc_amount: number; merchant_upi_id: string; merchant_name: string; inr_amount: number; tx_signature: string | null; payment_id: string; user_id: string }
 ) {
-  if (provider === "treasury_razorpay") {
+  // When OnMeta has no real credentials, fall through to Razorpay so that
+  // sandbox testing gets real UTRs instead of demo placeholders.
+  const onmetaKey = process.env.ONMETA_API_KEY;
+  const effectiveProvider =
+    provider === "onmeta" && (!onmetaKey || onmetaKey === "demo")
+      ? "treasury_razorpay"
+      : provider;
+
+  if (effectiveProvider !== provider) {
+    console.log(`[worker/settlement] OnMeta key absent — routing to treasury_razorpay`);
+  }
+
+  if (effectiveProvider === "treasury_razorpay") {
     // Razorpay Payout API takes INR amount + UPI ID directly (it's an INR float path)
     const rzResult = await initiateRazorpayPayout({
       amount:        txn.inr_amount,

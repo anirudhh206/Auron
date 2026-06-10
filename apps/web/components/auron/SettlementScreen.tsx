@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface SettlementStep {
@@ -205,6 +205,13 @@ export default function SettlementScreen({
   const [elapsed, setElapsed] = useState(0);
   const [utr] = useState(generateUTR);
 
+  // Keep a stable ref to onComplete so the effect below doesn't re-run
+  // when the parent re-renders and creates a new function reference.
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+  // Guard: fire onComplete exactly once even if elapsed keeps ticking after done.
+  const completedRef = useRef(false);
+
   useEffect(() => {
     const t = setInterval(() => setElapsed(e => e + 100), 100);
     return () => clearInterval(t);
@@ -213,10 +220,11 @@ export default function SettlementScreen({
   useEffect(() => {
     const count = STEPS.filter(s => elapsed >= s.duration).length;
     setCompletedCount(count);
-    if (count === STEPS.length) {
-      setTimeout(() => onComplete(utr), 400);
+    if (count === STEPS.length && !completedRef.current) {
+      completedRef.current = true;
+      setTimeout(() => onCompleteRef.current(utr), 400);
     }
-  }, [elapsed, STEPS, onComplete, utr]);
+  }, [elapsed, STEPS, utr]);
 
   const activeIdx = completedCount;
   const glowSize = Math.min(completedCount * 60, 300);

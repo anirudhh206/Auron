@@ -68,14 +68,35 @@ export default function QRScannerScreen({ onScanned, onBack, onSwitchToChat }: Q
   const [nonUpiQR, setNonUpiQR]   = useState<string | null>(null);
   // Prevents re-triggering on every ZXing frame after a non-UPI QR is detected
   const nonUpiDetectedRef = useRef(false);
+  // One AbortController per startScanner call — lets us cancel in-flight startup
+  const abortRef = useRef<AbortController | null>(null);
 
   const stopScanner = useCallback(() => {
+    // Signal any in-flight startScanner to bail out (handles Strict Mode
+    // double-invoke and navigate-away-while-starting races)
+    abortRef.current?.abort();
+    abortRef.current = null;
+    // Stop ZXing decode loop
     controlsRef.current?.stop();
     controlsRef.current = null;
+    // Stop the raw camera stream tracks so the browser releases the camera
+    // immediately and the video element doesn't throw "media removed" errors
+    if (videoRef.current?.srcObject) {
+      (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
+      videoRef.current.srcObject = null;
+    }
   }, []);
 
   // ── Start ZXing scanner ────────────────────────────────────────────────────
   const startScanner = useCallback(async () => {
+    // Abort any previous in-flight attempt before starting a new one.
+    // This is the key fix for React Strict Mode which mounts → unmounts →
+    // remounts, causing two concurrent startScanner calls whose video.play()
+    // promises collide and throw AbortError.
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+
     setStatus("init");
     setErrorMsg("");
     setNonUpiQR(null);
@@ -83,8 +104,10 @@ export default function QRScannerScreen({ onScanned, onBack, onSwitchToChat }: Q
 
     try {
       const { BrowserQRCodeReader } = await import("@zxing/browser");
-      const reader = new BrowserQRCodeReader();
+      // Bail if aborted while the dynamic import was resolving
+      if (ac.signal.aborted) return;
 
+      const reader = new BrowserQRCodeReader();
       if (!videoRef.current) return;
 
       const controls = await reader.decodeFromVideoDevice(
@@ -113,6 +136,12 @@ export default function QRScannerScreen({ onScanned, onBack, onSwitchToChat }: Q
         }
       );
 
+      // Bail if aborted while decodeFromVideoDevice was starting the stream
+      if (ac.signal.aborted) {
+        controls.stop();
+        return;
+      }
+
       controlsRef.current = controls;
       setStatus("scanning");
 
@@ -126,6 +155,10 @@ export default function QRScannerScreen({ onScanned, onBack, onSwitchToChat }: Q
       }
     } catch (err: unknown) {
       const errObj = err as { name?: string } | null;
+      // AbortError is expected during Strict Mode double-invoke and unmount
+      // mid-startup — not a real error, don't show anything to the user
+      if (errObj?.name === "AbortError" || ac.signal.aborted) return;
+
       const denied =
         errObj?.name === "NotAllowedError" ||
         errObj?.name === "PermissionDeniedError" ||
