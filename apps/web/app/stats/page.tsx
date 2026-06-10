@@ -616,7 +616,7 @@ export default function StatsPage() {
             <AnimatePresence>
 
               {/* Primary stat cards */}
-              <div className="stats-grid">
+              <div key="stats-primary" className="stats-grid">
                 <StatCard
                   icon={TrendingUp}
                   label="Total USDC Settled"
@@ -660,7 +660,7 @@ export default function StatsPage() {
               </div>
 
               {/* Secondary stat cards — infrastructure health */}
-              <div className="stats-grid-secondary">
+              <div key="stats-secondary" className="stats-grid-secondary">
                 <StatCard
                   icon={Activity}
                   label="Ledger Events"
@@ -692,6 +692,7 @@ export default function StatsPage() {
               {/* Treasury card */}
               {data?.treasury && (
                 <motion.div
+                  key="treasury-card"
                   className="treasury-card"
                   initial={{ opacity: 0, y: 16 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -731,6 +732,7 @@ export default function StatsPage() {
               {/* Recent settlements */}
               {data && data.recent.length > 0 && (
                 <motion.div
+                  key="recent-settlements"
                   initial={{ opacity: 0, y: 16 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1], delay: 0.32 }}
@@ -858,7 +860,7 @@ export default function StatsPage() {
 
               {/* Empty state */}
               {data && data.recent.length === 0 && !loading && (
-                <div style={{ textAlign: "center", padding: "60px 0", fontFamily: "'Geist Mono',monospace", fontSize: 12, color: C.dim }}>
+                <div key="empty-state" style={{ textAlign: "center", padding: "60px 0", fontFamily: "'Geist Mono',monospace", fontSize: 12, color: C.dim }}>
                   No completed settlements yet.
                 </div>
               )}

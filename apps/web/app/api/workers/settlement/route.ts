@@ -16,9 +16,10 @@
 
 import { NextRequest, NextResponse }      from "next/server";
 import { initiateOnMetaPayout }           from "@/lib/onmeta";
-import { initiateRazorpayPayout }         from "@/lib/razorpay";
+import { initiateRazorpayPayout, fetchRazorpayPayoutById } from "@/lib/razorpay";
 import {
   getPendingSettlements,
+  getSettlementsForReconciliation,
   claimSettlementForProcessing,
   updateSettlement,
   createSettlement,
@@ -117,22 +118,35 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     try {
       const payoutResult = await _executePayout(providerUsed, txn);
 
+      const hasUtr      = !!payoutResult.utrNumber;
+      const isConfirmed = payoutResult.status === "completed" || payoutResult.status === "processed";
+
       await updateSettlement(settlement.id, {
-        status:             payoutResult.status === "completed" ? "completed" : "processing",
+        status:             hasUtr ? "completed" : "processing",
         provider_payout_id: payoutResult.payoutId ?? undefined,
         utr:                payoutResult.utrNumber ?? undefined,
         last_checked_at:    new Date(),
         raw_response:       payoutResult as unknown as Record<string, unknown>,
       });
 
-      await transitionTransaction(txn.id, "completed", {
-        reason: `worker: ${providerUsed} payout ${payoutResult.status} id=${payoutResult.payoutId}`,
-      });
-
-      results.succeeded++;
-      console.log(
-        `[worker/settlement] SUCCESS ${tag} payoutId=${payoutResult.payoutId} utr=${payoutResult.utrNumber ?? "pending"}`
-      );
+      if (hasUtr || isConfirmed) {
+        // Only mark the transaction completed once we have a real UTR (or
+        // the provider confirmed success without one — e.g. OnMeta).
+        await transitionTransaction(txn.id, "completed", {
+          reason: `worker: ${providerUsed} payout ${payoutResult.status} id=${payoutResult.payoutId}`,
+        });
+        results.succeeded++;
+        console.log(
+          `[worker/settlement] SUCCESS ${tag} payoutId=${payoutResult.payoutId} utr=${payoutResult.utrNumber ?? "none"}`
+        );
+      } else {
+        // Payout created but still queued/processing — UTR not yet assigned.
+        // Transaction stays in "settling"; reconciliation loop will poll for UTR.
+        console.log(
+          `[worker/settlement] QUEUED ${tag} payoutId=${payoutResult.payoutId} status=${payoutResult.status} — awaiting UTR`
+        );
+        results.succeeded++; // payout was dispatched successfully
+      }
 
     } catch (err: unknown) {
       const msg            = err instanceof Error ? err.message : String(err);
@@ -187,6 +201,32 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
         results.failed++;
       }
     }
+  }
+
+  // ── Razorpay UTR reconciliation ──────────────────────────────────────────────
+  // Pick up processing Razorpay settlements that have a payoutId but no UTR yet
+  // (payouts that were queued on a prior run) and poll Razorpay for their status.
+  const reconcile = await getSettlementsForReconciliation(20);
+  const rzPending  = reconcile.filter(s => s.provider === "treasury_razorpay" && !s.utr && s.provider_payout_id);
+
+  for (const s of rzPending) {
+    const poll = await fetchRazorpayPayoutById(s.provider_payout_id!);
+    if (!poll.success || !poll.utr) continue;
+
+    await updateSettlement(s.id, {
+      status:          "completed",
+      utr:             poll.utr,
+      last_checked_at: new Date(),
+      raw_response:    poll as unknown as Record<string, unknown>,
+    });
+
+    // Now we have the UTR — safe to mark transaction completed
+    await transitionTransaction(s.transaction_id, "completed", {
+      reason: `razorpay UTR reconciled: ${poll.utr} payoutId=${s.provider_payout_id}`,
+    });
+
+    console.log(`[worker/settlement] UTR reconciled settlementId=${s.id} utr=${poll.utr}`);
+    results.succeeded++;
   }
 
   const durationMs = Date.now() - start;

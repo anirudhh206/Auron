@@ -39,7 +39,7 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
               margin: "0 auto 24px",
               fontSize: 28,
             }}>
-              ⚠️
+
             </div>
             <h1 style={{ fontWeight: 700, fontSize: 20, marginBottom: 8 }}>
               Auron is temporarily unavailable

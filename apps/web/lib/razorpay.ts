@@ -366,18 +366,65 @@ async function createPayout(
     }
 
     const data = await res.json() as Record<string, unknown>;
-    const utr  = data.utr  as string | undefined
-              ?? data.reference_id as string | undefined;
 
     return {
       success:  true,
-      payoutId: data.id  as string | undefined,
-      status:   data.status as string | undefined ?? "processed",
-      utr:      utr || undefined,   // coerce empty string → undefined
+      payoutId: data.id     as string | undefined,
+      status:   data.status as string | undefined ?? "queued",
+      // utr is null at creation time for queued/processing payouts —
+      // it is only populated once Razorpay marks the payout "processed".
+      // Never fall back to reference_id (that's our payment_id, not a UTR).
+      utr: (data.utr as string | undefined) || undefined,
     };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Unknown";
     return { success: false, error: `Payout exception: ${msg}`, retryable: isNetworkError(msg) };
+  }
+}
+
+// ── Poll payout status (for UTR retrieval after queued/processing) ────────────
+
+/**
+ * Fetch a single Razorpay payout by ID.
+ * Call this from the settlement worker reconciliation loop to retrieve the UTR
+ * once Razorpay transitions the payout from queued → processed.
+ */
+export async function fetchRazorpayPayoutById(
+  payoutId: string
+): Promise<RazorpayPayoutResult> {
+  const keyId    = process.env.RAZORPAY_KEY_ID;
+  const keySecret = process.env.RAZORPAY_KEY_SECRET;
+  if (!keyId || !keySecret) {
+    return { success: false, error: "Missing Razorpay credentials", retryable: false };
+  }
+
+  try {
+    const res = await fetch(`${RAZORPAY_API_URL}/payouts/${payoutId}`, {
+      method:  "GET",
+      headers: jsonHeaders(keyId, keySecret),
+      signal:  AbortSignal.timeout(PAYOUT_TIMEOUT_MS),
+    });
+
+    if (!res.ok) {
+      const err    = await res.json().catch(() => ({})) as Record<string, unknown>;
+      const errObj = err.error as Record<string, unknown> | undefined;
+      return {
+        success:   false,
+        error:     String(errObj?.description ?? res.statusText),
+        retryable: res.status >= 500,
+      };
+    }
+
+    const data = await res.json() as Record<string, unknown>;
+    return {
+      success:  true,
+      payoutId: data.id     as string | undefined,
+      status:   data.status as string | undefined,
+      utr:      (data.utr as string | undefined) || undefined,
+    };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Unknown";
+    return { success: false, error: `Fetch payout exception: ${msg}`, retryable: isNetworkError(msg) };
   }
 }
 
