@@ -459,10 +459,13 @@ export default function AppPage() {
           onComplete={(generatedUtr) => {
             // Use real receipt data if available, else use generated UTR
             const real = realReceiptRef.current;
+            const fallbackSig = confirmedSigRef.current;
             setReceiptData(real ?? {
               utr: generatedUtr,
               receiptHash: "",
-              solscanUrl: "",
+              solscanUrl: fallbackSig && !fallbackSig.startsWith("demo_")
+                ? getTxExplorerUrl(fallbackSig)
+                : "",
               settledAt: new Date().toLocaleString("en-IN", {
                 day: "numeric", month: "short", year: "numeric",
                 hour: "2-digit", minute: "2-digit", hour12: true,
