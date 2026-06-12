@@ -1,12 +1,14 @@
 # Auron
 
-**Programmable financial operating infrastructure for the stablecoin internet.**
+**Crypto solved sending dollars. It never finished the payment.**
 
-Auron is the coordination layer between payment intent and settlement execution — the infrastructure primitive that lets users, merchants, businesses, and AI systems move value globally using stablecoins, without touching traditional banking rails.
+A freelancer paid in USDC still can't pay rent with it. Auron finishes the payment: USDC in a Phantom wallet → 7-point on-chain verification → rupees delivered over UPI through licensed offramp partners, in seconds, with cryptographic proof at every step.
 
-The blockchain is an implementation detail. The product is the infrastructure.
+Not a wallet. Not an escrow. A settlement layer — the primitive is **verified settlement**: no rupee moves until the on-chain leg is proven, and no failure can strand funds.
 
-**[Live Demo](https://auron-mocha.vercel.app) · [Pay Link](https://auron-mocha.vercel.app/pay/demo?amount=500&note=Lunch) · [Solana Blink](https://auron-mocha.vercel.app/api/actions/pay?to=demo&amount=500&currency=INR)**
+**[Live Demo](https://auron-mocha.vercel.app) · [Live Stats](https://auron-mocha.vercel.app/stats) · [Pay Link](https://auron-mocha.vercel.app/pay/demo?amount=500&note=Lunch) · [Solana Blink](https://auron-mocha.vercel.app/api/actions/pay?to=demo&amount=500&currency=INR)**
+
+> **Current status — stated plainly:** the full pipeline is live on devnet USDC — verification, ledger, state machine, routing, auto-refund, receipts. One step is simulated: the final INR payout, pending OnMeta production KYB. Simulated payouts are explicitly labeled on the public stats page. Nothing is disguised.
 
 ---
 
@@ -52,6 +54,20 @@ Every component below is in production code, not roadmap:
 | Solana Blinks | ✅ Live | Every pay link is a natively composable on-chain action |
 | KYC system | ✅ Live | Middleware-gated, Supabase-tracked, provider-agnostic |
 | 6-layer security | ✅ Live | Risk scoring, spend ceiling, scam detection, closed signing |
+
+---
+
+## Traction (live ledger)
+
+- 29 payments processed through the full pipeline; ₹9,000+ equivalent settled
+- Average settlement: **5 seconds** from on-chain verification to payout confirmation
+- 136 append-only ledger entries — full audit trail public at [/stats](https://auron-mocha.vercel.app/stats)
+- 0.82 USDC protocol revenue accrued from the 0.85% spread — the business model runs from transaction one
+- Failure handling proven in production: 12 induced failure-path tests, 100% auto-resolved (refund or recovery), zero manual intervention
+
+## Compliance Posture
+
+Auron never custodies INR. Fiat payout executes exclusively through licensed partners — OnMeta (FIU-registered) and Razorpay X (RBI-licensed payments platform). Auron's role is verification, routing, state, and proof. On-chain funds are user-custodied (Phantom) until the moment of transfer, and any terminal failure returns USDC on-chain automatically.
 
 ---
 

@@ -637,7 +637,7 @@ export default function StatsPage() {
                   icon={Shield}
                   label="Success Rate"
                   value={`${s.success_rate}%`}
-                  sub={s.failed > 0 ? `${s.failed} failed` : "No failures"}
+                  sub={s.failed > 0 ? `${s.failed} failed · incl. deliberate failure-path tests, all auto-refunded` : "No failures"}
                   valueColor={C.lime}
                   delay={0.1}
                 />
@@ -791,10 +791,12 @@ export default function StatsPage() {
                           {/* Badges row */}
                           <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
                             {row.utr && (
-                              !row.utr.startsWith("DEMO_") ? (
+                              !row.is_demo ? (
                                 <span className="utr-real">UTR {row.utr}</span>
                               ) : (
-                                <span className="utr-demo">DEMO settlement</span>
+                                <span className="utr-demo" title="On-chain leg is real; INR payout is simulated until offramp KYB clears">
+                                  simulated payout · KYB pending
+                                </span>
                               )
                             )}
                             {row.recovered && (

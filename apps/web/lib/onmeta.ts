@@ -47,7 +47,7 @@ export async function initiateOnMetaPayout(
       success: true,
       payoutId: `demo_payout_${Date.now()}`,
       status: "completed",
-      utrNumber: `YESB${Math.floor(Math.random() * 1e12).toString().padStart(12, "0")}`,
+      utrNumber: `DEMO_${Date.now()}`,
       estimatedDelivery: "Completed (demo)",
     };
   }

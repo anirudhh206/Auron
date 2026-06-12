@@ -31,6 +31,10 @@ export default function Providers({ children }: { readonly children: ReactNode }
 
   useEffect(() => {
     initNotifications().catch(console.error);
+    // If MetaMask was previously stored as the selected wallet (via Wallet
+    // Standard auto-discovery), clear it so autoConnect targets Phantom only.
+    const stored = localStorage.getItem("walletName");
+    if (stored && stored !== "Phantom") localStorage.removeItem("walletName");
   }, []);
 
   return (
@@ -38,7 +42,17 @@ export default function Providers({ children }: { readonly children: ReactNode }
       endpoint={RPC_ENDPOINT}
       config={{ commitment: "confirmed" }}
     >
-      <WalletProvider wallets={wallets} autoConnect>
+      <WalletProvider
+          wallets={wallets}
+          autoConnect
+          onError={(err) => {
+            // MetaMask v11+ registers itself via the Wallet Standard Solana
+            // interface and throws when our Phantom-only app tries to connect.
+            // Suppress it — the user never selected MetaMask intentionally.
+            if (err.message?.includes("MetaMask")) return;
+            console.error("[wallet]", err);
+          }}
+        >
         <WalletModalProvider>
           <QueryClientProvider client={queryClient}>
             {children}

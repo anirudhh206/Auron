@@ -8,9 +8,11 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
+        xmlns:tools="http://schemas.android.com/tools"
         android:usesCleartextTraffic="false"
+        tools:replace="android:usesCleartextTraffic"
         android:networkSecurityConfig="@xml/network_security_config">
-
+         
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
             android:name=".MainActivity"

@@ -67,9 +67,9 @@ function validate(body: unknown):
 export async function POST(req: NextRequest): Promise<NextResponse> {
   const start = Date.now();
 
-  // Verify Razorpay is configured
+  // Verify Razorpay is configured verifying is razorpay credentials are avaiable or not 
   if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-    console.error("[/api/razorpay] Missing RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET");
+    console.error("[/api/razorpay] Missing RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET");   // just a check for id and api key 
     return NextResponse.json(
       { error: "Razorpay not configured on server", retryable: false },
       { status: 503 }
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
   let body: unknown;
   try { body = await req.json(); }
-  catch { return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 }); }
+  catch { return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 }); }    
 
   const validation = validate(body);
   if (!validation.ok) {

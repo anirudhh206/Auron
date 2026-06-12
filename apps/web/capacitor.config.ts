@@ -11,22 +11,25 @@ import type { CapacitorConfig } from '@capacitor/cli';
  *
  * Update `server.url` after Vercel deployment.
  */
+const serverUrl = process.env.CAPACITOR_SERVER_URL || 'https://auron.vercel.app';
+const isLocalDev = serverUrl.startsWith('http://');
+
 const config: CapacitorConfig = {
   appId: 'xyz.auron.app',
   appName: 'Auron',
   webDir: 'out', // Fallback — not used when server.url is set
 
   server: {
-    url: process.env.CAPACITOR_SERVER_URL || 'https://auron.vercel.app', // set CAPACITOR_SERVER_URL for local dev
-    cleartext: false,
+    url: serverUrl, // set CAPACITOR_SERVER_URL=http://10.0.2.2:3000 for emulator dev
+    cleartext: isLocalDev, // needed for http:// local dev server
     androidScheme: 'https',
   },
 
   android: {
     backgroundColor: '#030712',
-    allowMixedContent: false,
+    allowMixedContent: isLocalDev,
     captureInput: true,
-    webContentsDebuggingEnabled: process.env.NODE_ENV !== 'production',
+    webContentsDebuggingEnabled: isLocalDev,
   },
 
   plugins: {

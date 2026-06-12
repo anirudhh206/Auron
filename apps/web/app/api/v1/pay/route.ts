@@ -91,8 +91,6 @@ async function dispatchSettlement(
   }
 }
 
-// ── Config ────────────────────────────────────────────────────────────────────
-
 const MAX_INR_PER_TX  = 200_000;        // ₹2 lakh per transaction
 const MAX_USDC_PER_TX = 2_500;
 
@@ -100,7 +98,6 @@ const TREASURY_ADDRESS: string =
   process.env.NEXT_PUBLIC_FEE_WALLET ??
   (() => { throw new Error("NEXT_PUBLIC_FEE_WALLET is not set. Treasury address is required."); })();
 
-// ── Request schema ────────────────────────────────────────────────────────────
 
 interface PayRequest {
   paymentId:        string;

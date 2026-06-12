@@ -1,24 +1,46 @@
 {
   "name": "@auron/sdk",
   "version": "0.1.0",
-  "description": "TypeScript SDK for the Auron settlement infrastructure",
+  "description": "TypeScript SDK for the Auron USDC→INR settlement infrastructure on Solana",
+  "author": "Auron <anirudhvashisth2006@gmail.com>",
+  "license": "MIT",
+  "homepage": "https://github.com/anirudhh206/auron",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/anirudhh206/auron.git",
+    "directory": "packages/sdk"
+  },
+  "keywords": [
+    "auron", "solana", "usdc", "upi", "india",
+    "settlement", "payments", "stablecoin", "defi"
+  ],
   "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "require": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
     }
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
-    "build":      "tsup src/index.ts --format cjs,esm --dts",
-    "dev":        "tsup src/index.ts --format cjs,esm --dts --watch",
-    "type-check": "tsc --noEmit",
-    "lint":       "eslint src/"
+    "build":          "tsup src/index.ts --format cjs,esm --dts --clean",
+    "dev":            "tsup src/index.ts --format cjs,esm --dts --watch",
+    "type-check":     "tsc --noEmit",
+    "prepublishOnly": "npm run build && npm run type-check"
   },
-  "keywords": ["auron", "solana", "usdc", "upi", "settlement", "payments", "india"],
-  "license": "MIT",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "devDependencies": {
     "tsup": "^8.0.0",
     "typescript": "^5.0.0"
