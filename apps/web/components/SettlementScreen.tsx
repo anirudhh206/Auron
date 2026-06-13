@@ -242,7 +242,6 @@ export default function SettlementScreen({
   usdcAmount,
   txSignature,
   onComplete,
-  isDemo = false,
 }: SettlementScreenProps) {
   const [completedCount, setCompletedCount] = useState(0);
   const [elapsed, setElapsed] = useState(0);

@@ -59,10 +59,18 @@ export const USDC_MINT = new PublicKey(
 
 // Auron treasury — receives platform fees from Jupiter swaps
 // Set NEXT_PUBLIC_FEE_WALLET in env to your actual treasury wallet
-export const FEE_WALLET = new PublicKey(
-  // Use || not ?? — empty string env var must also fall through to the default
-  process.env.NEXT_PUBLIC_FEE_WALLET || "11111111111111111111111111111111"
-);
+function _parseFeeWallet(): PublicKey {
+  const raw = process.env.NEXT_PUBLIC_FEE_WALLET;
+  if (raw) {
+    try {
+      return new PublicKey(raw);
+    } catch {
+      console.warn(`[solana] NEXT_PUBLIC_FEE_WALLET="${raw}" is not a valid base58 address — falling back to system program`);
+    }
+  }
+  return new PublicKey("11111111111111111111111111111111");
+}
+export const FEE_WALLET = _parseFeeWallet();
 
 // 0.3% platform fee on every Jupiter swap — Auron's on-chain revenue
 export const PLATFORM_FEE_BPS = 30;
