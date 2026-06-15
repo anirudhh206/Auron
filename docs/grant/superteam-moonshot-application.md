@@ -72,7 +72,7 @@ Wallet-to-wallet USDC apps leave the recipient holding USDC. Escrow-swap project
 
 ## About the builder
 
-Solo builder from India. **Auron won a $4,000 USDC side track at the Colosseum hackathon (June 2026)** — external validation from Solana ecosystem judges. Beyond the prize, Auron is months of daily shipping, all public in the commit history: the verification engine, settlement and reconciliation workers, auto-refund engine, Anchor program on devnet, Solana Blinks, Android app. I build at the speed this corridor needs, and I'm committed to open-sourcing the settlement engine after mainnet deployment, per the grant's composability guidelines.
+Solo builder from India. **I previously won a $4,000 USDC side track at Colosseum with Cognify** — external validation from Solana ecosystem judges. Beyond the prize, Auron is months of daily shipping, all public in the commit history: the verification engine, settlement and reconciliation workers, auto-refund engine, Anchor program on devnet, Solana Blinks, Android app. I build at the speed this corridor needs, and I'm committed to open-sourcing the settlement engine after mainnet deployment, per the grant's composability guidelines.
 
 ---
 
