@@ -20,6 +20,7 @@
  */
 
 import crypto from "crypto";
+import { kv } from "@vercel/kv";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -63,14 +64,21 @@ export interface RazorpayWebhookPayload {
 const RAZORPAY_API_URL   = "https://api.razorpay.com/v1";
 const PAYOUT_TIMEOUT_MS  = 15_000;
 
-// ── Payout Cache (in-memory; replace with Redis in production) ──────────────
+// ── Payout Cache (Vercel KV — survives serverless restarts) ─────────────────
 
-interface CachedPayout {
-  result: RazorpayPayoutResult;
-  cachedAt: number;
+const PAYOUT_CACHE_TTL_SEC = 24 * 60 * 60; // 24h in seconds (KV TTL unit)
+
+async function _getCachedPayout(referenceId: string): Promise<RazorpayPayoutResult | null> {
+  try {
+    return await kv.get<RazorpayPayoutResult>(`auron:payout:${referenceId}`);
+  } catch { return null; }
 }
-const payoutCache = new Map<string, CachedPayout>();
-const PAYOUT_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+
+async function _setCachedPayout(referenceId: string, result: RazorpayPayoutResult): Promise<void> {
+  try {
+    await kv.set(`auron:payout:${referenceId}`, result, { ex: PAYOUT_CACHE_TTL_SEC });
+  } catch { /* non-fatal — settlement state machine is the primary idempotency guard */ }
+}
 
 
 export async function initiateRazorpayPayout(
@@ -92,11 +100,11 @@ export async function initiateRazorpayPayout(
     return { success: true, payoutId, status: "processed", utr };
   }
 
-  // ── Check cache for idempotency ────────────────────────────────────────────
-  const cached = payoutCache.get(req.referenceId);
-  if (cached && Date.now() - cached.cachedAt < PAYOUT_CACHE_TTL_MS) {
-    console.log(`[razorpay] CACHE HIT referenceId=${req.referenceId} payoutId=${cached.result.payoutId}`);
-    return { ...cached.result, success: true };
+  // ── Check KV cache for idempotency (survives serverless restarts) ──────────
+  const cached = await _getCachedPayout(req.referenceId);
+  if (cached) {
+    console.log(`[razorpay] CACHE HIT referenceId=${req.referenceId} payoutId=${cached.payoutId}`);
+    return { ...cached, success: true };
   }
 
   console.log(
@@ -129,7 +137,7 @@ export async function initiateRazorpayPayout(
     const payoutResult = await createPayout(keyId, keySecret, fundAccountId, req);
 
     if (payoutResult.success) {
-      payoutCache.set(req.referenceId, { result: payoutResult, cachedAt: Date.now() });
+      await _setCachedPayout(req.referenceId, payoutResult);
       console.log(
         `[razorpay] SUCCESS referenceId=${req.referenceId} payoutId=${payoutResult.payoutId} utr=${payoutResult.utr ?? "pending"}`
       );

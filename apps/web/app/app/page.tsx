@@ -10,7 +10,7 @@ import { useStore } from "@/store/useStore";
 import { usePaymentStore } from "@/store/usePaymentStore";
 import { createClient } from "@/lib/supabase/client";
 import {
-  getUSDCBalance, shortAddr, getConnection,
+  getUSDCBalance, shortAddr,
   buildUSDCTransferTx, FEE_WALLET, getTxExplorerUrl,
   NETWORK,
 } from "@/lib/solana";

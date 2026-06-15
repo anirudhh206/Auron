@@ -91,6 +91,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     if (txn.quote_fx_rate) {
       try {
         const liveRateData = await getLiveRate();
+        // getLiveRate returns a fallback rate if CoinGecko is unavailable — we
+        // still run the guard with the fallback so we never skip this check.
+        if (liveRateData.fallback) {
+          console.warn(`[worker/settlement] Price guard using fallback rate (CoinGecko unavailable) ${tag}`);
+        }
         const guard = checkPriceGuard(Number(txn.quote_fx_rate), liveRateData.auronRate);
         if (!guard.safe) {
           console.warn(`[worker/settlement] Price guard failed — ${guard.reason} — initiating refund ${tag}`);
@@ -106,8 +111,8 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
           continue;
         }
       } catch {
-        // Rate feed unavailable — proceed (fail-open on price guard)
-        console.warn(`[worker/settlement] Price guard skipped (rate feed unavailable) ${tag}`);
+        // getLiveRate should not throw — log and skip only as a last resort
+        console.warn(`[worker/settlement] Price guard skipped (getLiveRate threw unexpectedly) ${tag}`);
       }
     }
 

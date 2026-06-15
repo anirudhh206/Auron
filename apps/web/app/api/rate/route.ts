@@ -9,76 +9,20 @@
  */
 
 import { NextResponse } from "next/server";
+import { getLiveRate } from "@/lib/quote";
 
 export const runtime = "nodejs";
 
-interface RateCache {
-  marketRate: number;
-  fetchedAt: number;
-}
-
-let cache: RateCache | null = null;
-const CACHE_TTL_MS = 60_000;
-// Spread and fallback driven by env vars — never hardcoded.
-// AURON_SPREAD_PERCENT is stored as a percent (e.g. "0.85" = 0.85%).
-// Must match lib/quote.ts which uses the same convention.
-const AURON_SPREAD_PCT     = parseFloat(process.env.AURON_SPREAD_PERCENT  ?? "0.85");
-const AURON_SPREAD         = AURON_SPREAD_PCT / 100;      // 0.85 → 0.0085
-const FALLBACK_MARKET_RATE = parseFloat(process.env.FALLBACK_FX_RATE_INR  ?? "84.00");
-
+// Delegates to getLiveRate() in lib/quote.ts so all server-side code shares one cache.
 export async function GET(): Promise<NextResponse> {
-  // Return cached rate if still fresh
-  if (cache && Date.now() - cache.fetchedAt < CACHE_TTL_MS) {
-    return NextResponse.json(buildResponse(cache.marketRate, true));
-  }
+  const rate = await getLiveRate();
 
-  try {
-    const res = await fetch(
-      "https://api.coingecko.com/api/v3/simple/price?ids=usd-coin&vs_currencies=inr",
-      {
-        signal: AbortSignal.timeout(5_000),
-        headers: { Accept: "application/json" },
-        // Next.js: don't cache this fetch — we manage our own cache
-        cache: "no-store",
-      }
-    );
-
-    if (!res.ok) throw new Error(`CoinGecko ${res.status}: ${res.statusText}`);
-
-    const data = await res.json() as { "usd-coin"?: { inr?: number } };
-    const marketRate = data["usd-coin"]?.inr;
-
-    // Sanity check — USDC/INR should be between ₹70 and ₹120
-    if (!marketRate || marketRate < 70 || marketRate > 120) {
-      throw new Error(`Rate out of expected range: ${marketRate}`);
-    }
-
-    cache = { marketRate, fetchedAt: Date.now() };
-    return NextResponse.json(buildResponse(marketRate, false));
-
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Failed to fetch rate";
-    console.error("[rate] CoinGecko error — using fallback:", message);
-
-    // Don't cache the fallback — retry on next request
-    return NextResponse.json({
-      ...buildResponse(FALLBACK_MARKET_RATE, false),
-      fallback: true,
-      error: message,
-    });
-  }
-}
-
-function buildResponse(marketRate: number, cached: boolean) {
-  const auronRate = parseFloat((marketRate * (1 - AURON_SPREAD)).toFixed(2));
-  return {
-    marketRate,
-    auronRate,          // what user pays: slightly below market (Auron keeps spread)
-    spread: AURON_SPREAD,
-    spreadPercent: `${AURON_SPREAD_PCT.toFixed(2)}%`,
-    cachedAt: cache?.fetchedAt ?? Date.now(),
-    cached,
-    // Convenience: how many USDC for ₹1000 at Auron rate
-    usdcPer1000Inr: parseFloat((1000 / auronRate).toFixed(6)),
-  };
+  return NextResponse.json({
+    marketRate:     rate.marketRate,
+    auronRate:      rate.auronRate,
+    spread:         rate.spreadPercent / 100,
+    spreadPercent:  `${rate.spreadPercent.toFixed(2)}%`,
+    fallback:       rate.fallback,
+    usdcPer1000Inr: parseFloat((1000 / rate.auronRate).toFixed(6)),
+  });
 }

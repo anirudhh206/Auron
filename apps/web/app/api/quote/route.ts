@@ -61,7 +61,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   const { inrAmount, merchantUpiId, merchantName } = validation;
-  const marketRate = await fetchMarketRate();
+  const { marketRate } = await getLiveRate();
 
   const quote = buildQuote({ inrAmount, merchantUpiId, merchantName, marketRate });
 

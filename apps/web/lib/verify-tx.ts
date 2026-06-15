@@ -166,12 +166,10 @@ export async function verifyUsdcTransfer(
         if ((info.mint as string) !== usdcMint) continue;
       }
 
-      // NOTE: SPL token instructions reference *token accounts* (ATAs), NOT wallet
-      // addresses, as source/destination. The treasury wallet itself is the *owner*
-      // of the destination ATA — it is not directly listed in the instruction
-      // accounts. We therefore skip the treasury address check here; the amount
-      // and USDC mint checks are sufficient for devnet demo verification.
-      // (Production would derive the treasury ATA and check destination explicitly.)
+      // SPL instructions reference ATAs, not wallet addresses.
+      // Reject if the destination is not the treasury's USDC ATA.
+      const destination = info.destination as string | undefined;
+      if (destination && destination !== expectedTreasuryATA) continue;
 
       // Verify amount with 2% tolerance (handles FX rounding + wallet differences).
       let rawAmount: number;

@@ -29,7 +29,7 @@ apps/web/
 │   │   └── hash-pin/      # Server-side PIN hashing (argon2id)
 │   └── globals.css        # Tailwind + custom CSS variables
 ├── components/            # React components (all 'use client')
-│   ├── WalletWidget.tsx   # InterwovenKit connect integration
+│   ├── WalletWidget.tsx   # Phantom wallet connect integration
 │   ├── ChatInterface.tsx  # Main chat UI
 │   ├── ConfirmCard.tsx    # 6-layer security confirmation
 │   ├── RevealCard.tsx     # Success/reveal screen
@@ -106,7 +106,7 @@ Always validate input and return proper HTTP status codes. Use `NextResponse` fo
 
 1. **Never store sensitive data in browser:** PIN, private keys, seed phrases must never touch client-side state.
    - PIN hashing: Always happens on server via `/api/hash-pin` 
-   - Private keys: Managed by InterwovenKit wallet only
+   - Private keys: Managed by Phantom wallet only — never accessible to Auron
 
 2. **Rate Limiting:** All public API routes must use Vercel KV for distributed rate limiting:
    ```tsx
@@ -218,4 +218,4 @@ export function AnimatedCard() {
 
 ---
 
-**Last Updated:** 2026-04-21 | Questions? Check CLAUDE.md or the project README.
+**Last Updated:** 2026-06-15 | Questions? Check CLAUDE.md or the project README.
