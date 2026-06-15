@@ -14,7 +14,8 @@
  *   - If a signature IS provided → still verify it (demo doesn't mean skip real checks)
  */
 
-import { Connection } from "@solana/web3.js";
+import { Connection, PublicKey } from "@solana/web3.js";
+import { getAssociatedTokenAddress } from "@solana/spl-token";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -143,6 +144,11 @@ export async function verifyUsdcTransfer(
           : "")
       );
     });
+
+    // Derive expected treasury ATA — SPL instructions reference ATAs, not wallet addresses
+    const expectedTreasuryATA = (
+      await getAssociatedTokenAddress(new PublicKey(usdcMint), new PublicKey(params.expectedToAddress))
+    ).toBase58();
 
     let transferFound  = false;
     let actualAmount   = 0;

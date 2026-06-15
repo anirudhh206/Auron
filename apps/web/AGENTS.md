@@ -5,7 +5,7 @@
 
 ## Next.js Version & Breaking Changes
 
-This is **Next.js 14.2.13** with App Router (not Pages Router). Conventions and APIs may differ from your training data. Key differences:
+This is **Next.js 15** with App Router (not Pages Router). Conventions and APIs may differ from your training data. Key differences:
 - `app/` directory structure (not `pages/`)
 - Server Components by default (mark with `'use client'` for interactive UI)
 - Route handlers in `app/api/` (not `pages/api/`)
@@ -47,14 +47,14 @@ apps/web/
 
 ## Technology Stack
 
-- **Framework:** Next.js 14 (App Router)
+- **Framework:** Next.js 15 (App Router)
 - **State:** Zustand (lightweight, simple)
 - **API Client:** React Query (@tanstack/react-query)
 - **UI Framework:** Tailwind CSS + Framer Motion (animations)
-- **Blockchain:** Initia SDK + InterwovenKit for wallet connection
+- **Blockchain:** Solana web3.js + Anchor + Phantom wallet (deep links on mobile, wallet adapter on desktop)
 - **AI:** Anthropic Claude SDK with prompt caching
 - **Security:** Argon2 (PIN hashing), Vercel KV (rate limiting), Sentry (monitoring)
-- **Icons:** Lucide React + Initia Icons
+- **Icons:** Lucide React
 
 ## Key Conventions
 

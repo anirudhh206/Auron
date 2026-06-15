@@ -13,7 +13,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { buildQuote, FALLBACK_RATE_INR } from "@/lib/quote";
+import { buildQuote, getLiveRate } from "@/lib/quote";
 
 export const runtime = "nodejs";
 
@@ -43,23 +43,6 @@ function validate(body: unknown): {
     merchantUpiId: (b.merchantUpiId as string).trim(),
     merchantName:  (b.merchantName  as string).trim(),
   };
-}
-
-// ── Rate fetch (reuses /api/rate logic) ───────────────────────────────────────
-
-async function fetchMarketRate(): Promise<number> {
-  try {
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-    const res    = await fetch(`${appUrl}/api/rate`, {
-      next: { revalidate: 30 },       // cache for 30s — quotes refresh anyway
-    });
-    if (!res.ok) throw new Error(`Rate API ${res.status}`);
-    const data   = await res.json() as { marketRate?: number };
-    return data.marketRate ?? FALLBACK_RATE_INR;
-  } catch {
-    console.warn("[quote] Could not fetch live rate — using fallback");
-    return FALLBACK_RATE_INR;
-  }
 }
 
 // ── Handler ───────────────────────────────────────────────────────────────────

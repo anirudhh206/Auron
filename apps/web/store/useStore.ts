@@ -134,9 +134,9 @@ export const useStore = create<AuronStore>()(
     }),
     {
       name: "auron-store",
-      // Only persist prefs and completed txs — not sensitive wallet state
+      // Persist prefs (without PIN hash) and spend tracking — never persist PIN to localStorage
       partialize: (s) => ({
-        prefs: s.prefs,
+        prefs: { ...s.prefs, pin: null },
         completedTxs: s.completedTxs,
         dailySpent: s.dailySpent,
         dailySpentINR: s.dailySpentINR,

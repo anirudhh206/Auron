@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import argon2 from "argon2";
+import { kv } from "@vercel/kv";
 
 /**
  * POST /api/hash-pin
@@ -16,6 +17,17 @@ import argon2 from "argon2";
  */
 
 export async function POST(req: NextRequest) {
+  // Rate limit: 5 requests per minute per IP
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  try {
+    const rlKey = `auron:ratelimit:hash-pin:${ip}`;
+    const count = await kv.incr(rlKey);
+    if (count === 1) await kv.expire(rlKey, 60);
+    if (count > 5) {
+      return NextResponse.json({ error: "Too many requests. Please wait." }, { status: 429 });
+    }
+  } catch { /* KV unavailable — proceed */ }
+
   try {
     const body = await req.json();
     const { pin } = body as { pin?: string };

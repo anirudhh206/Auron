@@ -136,7 +136,8 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Rate limiting (Vercel KV) ─────────────────────────────────────────
-    const rateLimitKey = `auron:ratelimit:chat:${userId ?? "anonymous"}`;
+    const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+    const rateLimitKey = `auron:ratelimit:chat:${userId ?? clientIp ?? "anonymous"}`;
     try {
       const current = await kv.incr(rateLimitKey);
       if (current === 1) await kv.expire(rateLimitKey, 60);

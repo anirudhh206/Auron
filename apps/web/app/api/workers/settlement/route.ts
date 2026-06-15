@@ -1,7 +1,7 @@
 /**
  * GET /api/workers/settlement — Async Settlement Worker
  *
- * Called by Vercel Cron every 30 seconds to drain the pending settlements queue.
+ * Called by Vercel Cron every 5 minutes to drain the pending settlements queue.
  * Protected by CRON_SECRET in production.
  *
  * Pipeline per settlement:

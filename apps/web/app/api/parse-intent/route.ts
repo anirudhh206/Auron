@@ -44,7 +44,8 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Layer 1: Rate limiting (Vercel KV) ─────────────────────────────────
-    const rateLimitKey = `auron:ratelimit:${userId ?? "anonymous"}`;
+    const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+    const rateLimitKey = `auron:ratelimit:${userId ?? clientIp ?? "anonymous"}`;
     const rateLimitTtl = 60; // 60 second window
 
     try {

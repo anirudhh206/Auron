@@ -32,6 +32,7 @@ import {
   TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import bs58 from "bs58";
+import { createClient } from "@supabase/supabase-js";
 import {
   transitionTransaction,
   updateSettlement,
@@ -42,7 +43,7 @@ import {
 
 const USDC_MINT = {
   "mainnet-beta": new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"),
-  "devnet":       new PublicKey("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"),
+  "devnet":       new PublicKey("Gh9ZwEmdLJ8DscKNTkTqPbNwLNNBjuSzaG9Vp2KGtKJr"),
 };
 const USDC_DECIMALS = 6;
 
@@ -197,9 +198,7 @@ async function _persistRefund(
   // Set the refund_tx_signature column
   await _setRefundTxSignature(transactionId, signature);
 
-  // Small delay for on-chain confirmation to propagate
-  await new Promise(r => setTimeout(r, 1_500));
-
+  // sendAndConfirmTransaction already waited for "confirmed" commitment — proceed immediately
   await transitionTransaction(transactionId, "refunded", {
     reason: `Refund confirmed: ${signature}`,
     metadata: { refund_tx_signature: signature },
@@ -215,16 +214,18 @@ async function _persistRefund(
 }
 
 // ── Write refund_tx_signature to DB ──────────────────────────────────────────
-// ledger.ts doesn't have this field yet — use direct Supabase client.
+
+function _getSupabaseAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false } }
+  );
+}
 
 async function _setRefundTxSignature(transactionId: string, signature: string): Promise<void> {
   try {
-    const { createClient } = await import("@supabase/supabase-js");
-    const url    = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const secret = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-    const db     = createClient(url, secret, { auth: { persistSession: false } });
-
-    await db
+    await _getSupabaseAdmin()
       .from("transactions")
       .update({ refund_tx_signature: signature })
       .eq("id", transactionId);
