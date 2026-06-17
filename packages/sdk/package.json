@@ -1,5 +1,5 @@
 {
-  "name": "@auron/sdk",
+  "name": "@auron-solana/sdk",
   "version": "0.1.0",
   "description": "TypeScript SDK for the Auron USDC→INR settlement infrastructure on Solana",
   "author": "Auron <anirudhvashisth2006@gmail.com>",
