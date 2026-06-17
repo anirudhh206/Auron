@@ -167,9 +167,15 @@ export async function verifyUsdcTransfer(
       }
 
       // SPL instructions reference ATAs, not wallet addresses.
-      // Reject if the destination is not the treasury's USDC ATA.
+      // On mainnet: hard reject if destination is not the treasury ATA.
+      // On devnet: warn only — treasury ATA may differ across deployments.
       const destination = info.destination as string | undefined;
-      if (destination && destination !== expectedTreasuryATA) continue;
+      if (destination && destination !== expectedTreasuryATA) {
+        if (network === "mainnet-beta") continue;
+        console.warn(
+          `[verify-tx] destination ${destination} != expectedTreasuryATA ${expectedTreasuryATA} (devnet — proceeding)`
+        );
+      }
 
       // Verify amount with 2% tolerance (handles FX rounding + wallet differences).
       let rawAmount: number;
