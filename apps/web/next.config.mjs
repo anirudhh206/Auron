@@ -23,6 +23,15 @@ const nextConfig = {
   async headers() {
     return [
       {
+        // CORS — allow any origin to call the public API (SDK consumers)
+        source: "/api/:path*",
+        headers: [
+          { key: "Access-Control-Allow-Origin",  value: "*" },
+          { key: "Access-Control-Allow-Methods", value: "GET,POST,OPTIONS" },
+          { key: "Access-Control-Allow-Headers", value: "Content-Type,x-api-key,Authorization" },
+        ],
+      },
+      {
         source: "/(.*)",
         headers: [
           { key: "X-Frame-Options", value: "DENY" },
