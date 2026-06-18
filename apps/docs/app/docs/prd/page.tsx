@@ -5,17 +5,6 @@ import PageNav from "@/components/PageNav";
 export const metadata: Metadata = { title: "Product Requirements" };
 
 
-function Metric({ label, target, current }: { label: string; target: string; current?: string }) {
-  return (
-    <div className="flex items-start justify-between px-5 py-3 border-b" style={{ borderColor: "var(--border)" }}>
-      <span style={{ fontFamily: "'Geist', sans-serif", fontSize: 13, color: "var(--text-muted)", flex: 1 }}>{label}</span>
-      <div className="text-right" style={{ flexShrink: 0, paddingLeft: 24 }}>
-        <span style={{ fontFamily: "'Geist Mono', monospace", fontSize: 11, color: "var(--lime)", display: "block" }}>{target}</span>
-        {current && <span style={{ fontFamily: "'Geist Mono', monospace", fontSize: 10, color: "var(--text-dim)" }}>now: {current}</span>}
-      </div>
-    </div>
-  );
-}
 
 export default function PRD() {
   return (
@@ -23,7 +12,7 @@ export default function PRD() {
       <p className="mono-label">Company</p>
       <h1>Product Requirements</h1>
       <p style={{ color: "var(--text-muted)", marginBottom: "2rem" }}>
-        Defines what Auron is building, for whom, and how success is measured. Phase 1 scope only.
+        Defines what Auron is building, for whom, and the technical requirements that are non-negotiable. Phase 1 scope only.
       </p>
       <hr />
 
@@ -53,60 +42,6 @@ export default function PRD() {
         ))}
       </div>
 
-      <hr />
-
-      <h2>User stories</h2>
-
-      <h3>Consumer</h3>
-      <UserStory
-        role="crypto-native consumer"
-        action="pay any UPI merchant using my USDC without touching a bank"
-        outcome="I can spend crypto at any Indian merchant without cashing out first"
-      />
-      <UserStory
-        role="crypto-native consumer"
-        action="say 'pay ₹500 to Swiggy' and have it just work"
-        outcome="I don't need to know wallet addresses, mints, or gas fees"
-      />
-      <UserStory
-        role="crypto-native consumer"
-        action="scan a merchant's QR code and pay in USDC"
-        outcome="existing merchant infrastructure works — they don't need to change anything"
-      />
-      <UserStory
-        role="crypto-native consumer"
-        action="get a cryptographic receipt with a Solscan link"
-        outcome="I can prove the payment happened independently of Auron"
-      />
-
-      <h3>Developer</h3>
-      <UserStory
-        role="developer"
-        action="integrate USDC → INR settlement into my app in under 30 minutes"
-        outcome="I don't have to build or maintain payment infrastructure"
-      />
-      <UserStory
-        role="developer"
-        action="receive webhooks when a payment completes or fails"
-        outcome="my backend can react to settlement outcomes without polling"
-      />
-      <UserStory
-        role="developer"
-        action="retry a failed payment safely using idempotency keys"
-        outcome="retries never cause double charges"
-      />
-
-      <h3>AI agent</h3>
-      <UserStory
-        role="AI agent"
-        action="call getQuote() and then POST /api/v1/pay with a signed transaction"
-        outcome="the agent can settle payments autonomously without human intervention"
-      />
-      <UserStory
-        role="AI agent builder"
-        action="set a daily spend limit on each API key"
-        outcome="a runaway agent cannot drain the treasury"
-      />
 
       <hr />
 
@@ -151,22 +86,6 @@ export default function PRD() {
         ))}
       </div>
 
-      <hr />
-
-      <h2>Success metrics</h2>
-      <div style={{ background: "var(--terminal)", border: "1px solid var(--border)", borderRadius: 10, overflow: "hidden" }}>
-        <Metric label="End-to-end settlement time" target="< 20 seconds" current="~5 s average on devnet" />
-        <Metric label="Payment success rate" target="> 98%" current="100% on devnet (12 induced failures, all auto-resolved)" />
-        <Metric label="On-chain verification latency" target="< 3 seconds" current="~2.1 s average" />
-        <Metric label="Monthly active payers (6 months post-mainnet)" target="1,000" />
-        <Metric label="Daily payment volume (6 months post-mainnet)" target="₹5,00,000+ / day" />
-        <Metric label="Protocol revenue (6 months post-mainnet)" target="₹14,000+ / day net" />
-        <Metric label="API uptime" target="99.9%" />
-        <div className="px-5 py-3">
-          <span style={{ fontFamily: "'Geist', sans-serif", fontSize: 13, color: "var(--text-muted)" }}>Zero incidents where funds were lost or stuck without auto-recovery</span>
-          <span style={{ fontFamily: "'Geist Mono', monospace", fontSize: 11, color: "var(--lime)", display: "block", textAlign: "right", marginTop: 2 }}>always</span>
-        </div>
-      </div>
 
       <hr />
 
