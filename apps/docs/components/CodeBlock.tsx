@@ -18,26 +18,38 @@ export default function CodeBlock({ code, language = "ts", filename }: Props) {
   };
 
   return (
-    <div className="my-5 overflow-hidden text-sm" style={{ border: "1px solid var(--border-code)", background: "var(--bg-code)", borderRadius: "6px" }}>
-      {/* Header bar */}
+    <div
+      className="my-5 overflow-hidden"
+      style={{ background: "var(--terminal)", border: "1px solid var(--border)", borderRadius: 10 }}
+    >
+      {/* Terminal header — matches Auron app style */}
       <div
-        className="flex items-center justify-between px-4 py-2.5"
-        style={{ borderBottom: "1px solid var(--border-code)", background: "rgba(255,255,255,0.02)" }}
+        className="flex items-center justify-between px-4 py-3"
+        style={{ borderBottom: "1px solid var(--border)" }}
       >
         <div className="flex items-center gap-2.5">
           {/* Traffic dots */}
           <div className="flex items-center gap-1.5">
-            <div className="w-2.5 h-2.5 rounded-full" style={{ background: "#3a3a4a" }} />
-            <div className="w-2.5 h-2.5 rounded-full" style={{ background: "#3a3a4a" }} />
-            <div className="w-2.5 h-2.5 rounded-full" style={{ background: "#3a3a4a" }} />
+            {["#3F3F46", "#3F3F46", "#3F3F46"].map((c, i) => (
+              <div key={i} style={{ width: 10, height: 10, borderRadius: "50%", background: c }} />
+            ))}
           </div>
-          {filename && (
-            <span className="text-xs font-mono ml-1" style={{ color: "var(--text-muted)" }}>{filename}</span>
-          )}
-          {!filename && (
+          {filename ? (
             <span
-              className="text-[10px] uppercase font-medium px-1.5 py-0.5 rounded"
-              style={{ background: "var(--bg-elevated)", color: "var(--text-subtle)", letterSpacing: "0.06em" }}
+              style={{ fontFamily: "'Geist Mono', monospace", fontSize: 11, color: "var(--text-dim)", marginLeft: 8 }}
+            >
+              {filename}
+            </span>
+          ) : (
+            <span
+              style={{
+                fontFamily: "'Geist Mono', monospace",
+                fontSize: 10,
+                color: "var(--text-dim)",
+                letterSpacing: "0.08em",
+                marginLeft: 8,
+                textTransform: "uppercase",
+              }}
             >
               {language}
             </span>
@@ -46,41 +58,30 @@ export default function CodeBlock({ code, language = "ts", filename }: Props) {
 
         <button
           onClick={handleCopy}
-          className="text-xs flex items-center gap-1.5 px-2 py-1 rounded transition-colors"
+          className="flex items-center gap-1.5 transition-colors"
           style={{
-            color:      copied ? "var(--green)" : "var(--text-muted)",
+            fontFamily: "'Geist Mono', monospace",
+            fontSize: 11,
+            color: copied ? "var(--lime)" : "var(--text-dim)",
             background: "transparent",
+            border: "none",
+            cursor: "pointer",
           }}
-          onMouseEnter={e => { if (!copied) (e.currentTarget as HTMLElement).style.color = "var(--text)"; }}
-          onMouseLeave={e => { if (!copied) (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
+          onMouseEnter={e => { if (!copied) (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
+          onMouseLeave={e => { if (!copied) (e.currentTarget as HTMLElement).style.color = "var(--text-dim)"; }}
         >
-          {copied ? (
-            <>
-              <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-                <path d="M1.5 5.5l2.5 2.5L9 2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-              Copied
-            </>
-          ) : (
-            <>
-              <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-                <rect x="3.5" y="1" width="6.5" height="7.5" rx="1" stroke="currentColor" strokeWidth="1.1"/>
-                <path d="M1 3.5v7a1 1 0 001 1h5.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
-              </svg>
-              Copy
-            </>
-          )}
+          {copied ? "✓ COPIED" : "COPY"}
         </button>
       </div>
 
-      {/* Code */}
+      {/* Code body */}
       <pre
-        className="overflow-x-auto p-5 leading-relaxed"
+        className="overflow-x-auto p-5"
         style={{
-          color:      "var(--text-code)",
-          fontFamily: "'JetBrains Mono', 'Fira Code', Consolas, monospace",
-          fontSize:   "0.8rem",
-          lineHeight: "1.7",
+          fontFamily: "'Geist Mono', monospace",
+          fontSize: "0.78rem",
+          lineHeight: 1.75,
+          color: "#A1A1AA",
         }}
       >
         <code dangerouslySetInnerHTML={{ __html: highlight(code.trim(), language) }} />
@@ -94,28 +95,29 @@ function highlight(code: string, lang: string): string {
 
   if (lang === "bash" || lang === "sh") {
     return esc(code)
-      .replace(/(#[^\n]*)/g, `<span style="color:#4a4a68">$1</span>`)
-      .replace(/^(\$ )/gm, `<span style="color:#3a3a58">$1</span>`);
+      .replace(/(#[^\n]*)/g, `<span style="color:#3F3F46">$1</span>`)
+      .replace(/^(\$ )/gm, `<span style="color:#3F3F46">$1</span>`)
+      .replace(/(npm|yarn|pnpm)\b/g, `<span style="color:#C8F135">$1</span>`);
   }
 
   if (lang === "json") {
     return esc(code)
-      .replace(/"([^"]+)"(\s*:)/g, `<span style="color:#90bff0">"$1"</span>$2`)
-      .replace(/:\s*"([^"]*)"/g, `: <span style="color:#a5d6a7">"$1"</span>`)
-      .replace(/:\s*(true|false|null)\b/g, `: <span style="color:#c792ea">$1</span>`)
-      .replace(/:\s*(-?\d+\.?\d*)/g, `: <span style="color:#ffcc80">$1</span>`);
+      .replace(/"([^"]+)"(\s*:)/g, `<span style="color:#A1A1AA">"$1"</span>$2`)
+      .replace(/:\s*"([^"]*)"/g, `: <span style="color:#C8F135">"$1"</span>`)
+      .replace(/:\s*(true|false|null)\b/g, `: <span style="color:#F5A623">$1</span>`)
+      .replace(/:\s*(-?\d+\.?\d*)/g, `: <span style="color:#2775CA">$1</span>`);
   }
 
   // TypeScript / JavaScript
   return esc(code)
-    .replace(/(\/\/[^\n]*)/g, `<span style="color:#4a4a68">$1</span>`)
-    .replace(/(`[^`\n]*`)/g, `<span style="color:#a5d6a7">$1</span>`)
-    .replace(/"([^"\n]*)"/g, `<span style="color:#a5d6a7">"$1"</span>`)
-    .replace(/'([^'\n]*)'/g, `<span style="color:#a5d6a7">'$1'</span>`)
+    .replace(/(\/\/[^\n]*)/g, `<span style="color:#3F3F46">$1</span>`)
+    .replace(/(`[^`\n]*`)/g, `<span style="color:#C8F135">$1</span>`)
+    .replace(/"([^"\n]*)"/g, `<span style="color:#C8F135">"$1"</span>`)
+    .replace(/'([^'\n]*)'/g, `<span style="color:#C8F135">'$1'</span>`)
     .replace(/\b(import|export|from|const|let|async|await|return|throw|new|if|else|try|catch|type|interface|default|function|class|extends)\b/g,
-      `<span style="color:#c792ea">$1</span>`)
+      `<span style="color:#71717A">$1</span>`)
     .replace(/\b(string|number|boolean|void|null|undefined|Promise|true|false)\b/g,
-      `<span style="color:#80cbc4">$1</span>`)
-    .replace(/\b([A-Z][a-zA-Z0-9]*)\b/g, `<span style="color:#d2a8ff">$1</span>`)
-    .replace(/\b(\w+)(?=\s*\()/g, `<span style="color:#79c0ff">$1</span>`);
+      `<span style="color:#F5A623">$1</span>`)
+    .replace(/\b([A-Z][a-zA-Z0-9]*)\b/g, `<span style="color:#FAFAF9">$1</span>`)
+    .replace(/\b(\w+)(?=\s*\()/g, `<span style="color:#A1A1AA">$1</span>`);
 }

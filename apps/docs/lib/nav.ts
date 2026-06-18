@@ -10,55 +10,79 @@ export interface NavSection {
 
 export const NAV: NavSection[] = [
   {
-    section: "Getting Started",
+    section: "Overview",
     items: [
-      { title: "Introduction",        href: "/docs/introduction"  },
-      { title: "Quick Start",         href: "/docs/quickstart"    },
-      { title: "How It Works",        href: "/docs/how-it-works"  },
+      { title: "Introduction",         href: "/docs/introduction"          },
+      { title: "Vision & Roadmap",     href: "/docs/vision"                },
     ],
   },
   {
-    section: "SDK",
+    section: "The App",
     items: [
-      { title: "Installation",        href: "/docs/sdk"           },
-      { title: "AuronClient",         href: "/docs/sdk#client"    },
-      { title: "getQuote()",          href: "/docs/sdk#getquote"  },
-      { title: "Error Handling",      href: "/docs/sdk#errors"    },
+      { title: "The Auron App",        href: "/docs/the-app"               },
+      { title: "Payment Flows",        href: "/docs/how-it-works"          },
+      { title: "Solana Blinks",        href: "/docs/the-app#blinks"        },
+      { title: "Onboarding & PIN",     href: "/docs/the-app#onboarding"    },
     ],
   },
   {
-    section: "API Reference",
+    section: "Architecture",
     items: [
-      { title: "Authentication",      href: "/docs/api-reference#auth"  },
-      { title: "POST /api/v1/pay",    href: "/docs/api-reference#pay"   },
-      { title: "GET /api/quote",      href: "/docs/api-reference#quote" },
-      { title: "GET /api/rate",       href: "/docs/api-reference#rate"  },
+      { title: "System Architecture",  href: "/docs/architecture"          },
+      { title: "Settlement Lifecycle", href: "/docs/architecture#lifecycle"},
+      { title: "Internal Ledger",      href: "/docs/architecture#ledger"   },
+      { title: "Failure & Recovery",   href: "/docs/architecture#failure"  },
+      { title: "Liquidity Model",      href: "/docs/architecture#liquidity"},
+    ],
+  },
+  {
+    section: "Company",
+    items: [
+      { title: "Product Requirements", href: "/docs/prd"            },
+      { title: "Business Model",       href: "/docs/business-model" },
+      { title: "Compliance",           href: "/docs/compliance"     },
+    ],
+  },
+  {
+    section: "Developer",
+    items: [
+      { title: "Quick Start",          href: "/docs/quickstart"            },
+      { title: "SDK Reference",        href: "/docs/sdk"                   },
+      { title: "API Reference",        href: "/docs/api-reference"         },
+      { title: "Self-Hosting",         href: "/docs/deployment"            },
     ],
   },
   {
     section: "Security",
     items: [
-      { title: "6-Layer Model",       href: "/docs/security"            },
-      { title: "Rate Limiting",       href: "/docs/security#rate-limit" },
-      { title: "Transaction Verify",  href: "/docs/security#verify"     },
+      { title: "6-Layer Model",        href: "/docs/security"              },
+      { title: "Rate Limiting",        href: "/docs/security#rate-limit"   },
+      { title: "Transaction Verify",   href: "/docs/security#verify"       },
     ],
   },
   {
     section: "Examples",
     items: [
-      { title: "E-commerce Checkout", href: "/docs/examples"            },
-      { title: "Agent Integration",   href: "/docs/examples#agent"      },
+      { title: "E-commerce Checkout",  href: "/docs/examples"              },
+      { title: "Agent Integration",    href: "/docs/examples#agent"        },
+      { title: "Next.js Server Action",href: "/docs/examples#nextjs"       },
     ],
   },
 ];
 
-// Flat ordered list for prev/next navigation (top-level pages only)
 export const PAGE_ORDER: NavItem[] = [
-  { title: "Introduction",        href: "/docs/introduction"  },
-  { title: "Quick Start",         href: "/docs/quickstart"    },
-  { title: "How It Works",        href: "/docs/how-it-works"  },
-  { title: "SDK Reference",       href: "/docs/sdk"           },
-  { title: "API Reference",       href: "/docs/api-reference" },
-  { title: "Security",            href: "/docs/security"      },
-  { title: "Examples",            href: "/docs/examples"      },
+  { title: "Introduction",         href: "/docs/introduction"   },
+  { title: "Vision & Roadmap",     href: "/docs/vision"         },
+  { title: "The Auron App",        href: "/docs/the-app"        },
+  { title: "Payment Flows",        href: "/docs/how-it-works"   },
+  { title: "System Architecture",  href: "/docs/architecture"   },
+  { title: "Product Requirements", href: "/docs/prd"            },
+  { title: "Business Model",       href: "/docs/business-model" },
+  { title: "Compliance",           href: "/docs/compliance"     },
+  { title: "Quick Start",          href: "/docs/quickstart"     },
+  { title: "SDK Reference",        href: "/docs/sdk"            },
+  { title: "API Reference",        href: "/docs/api-reference"  },
+  { title: "Self-Hosting",         href: "/docs/deployment"     },
+  { title: "Security",             href: "/docs/security"       },
+  { title: "Examples",             href: "/docs/examples"       },
 ];

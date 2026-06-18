@@ -2,37 +2,34 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500;600&display=swap');
 
 :root {
-  --bg:            #09090f;
-  --bg-sidebar:    #0c0c14;
-  --bg-elevated:   #111119;
-  --bg-hover:      #16161f;
-  --bg-code:       #05050a;
-  --border:        #1e1e2c;
-  --border-code:   #181824;
-  --text:          #e2e2f0;
-  --text-muted:    #6b6b8a;
-  --text-subtle:   #3a3a54;
-  --text-code:     #cdd3f2;
-  --accent:        #7c6af7;
-  --accent-muted:  rgba(124, 106, 247, 0.12);
-  --accent-border: rgba(124, 106, 247, 0.25);
-  --green:         #4ade80;
-  --green-muted:   rgba(74, 222, 128, 0.1);
-  --amber:         #fbbf24;
-  --amber-muted:   rgba(251, 191, 36, 0.1);
-  --red:           #f87171;
-  --red-muted:     rgba(248, 113, 113, 0.1);
+  --bg:           #09090B;
+  --surface:      #111114;
+  --surface2:     #18181C;
+  --terminal:     #0D0D10;
+  --border:       #27272A;
+  --border-bright:#3F3F46;
+  --text:         #FAFAF9;
+  --text-muted:   #A1A1AA;
+  --text-dim:     #71717A;
+  --lime:         #C8F135;
+  --lime-dim:     #A3C42A;
+  --lime-glow:    rgba(200, 241, 53, 0.08);
+  --lime-border:  rgba(200, 241, 53, 0.2);
+  --gold:         #F5A623;
+  --usdc:         #2775CA;
+  --error:        #EF4444;
 }
 
-* { box-sizing: border-box; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
 html {
-  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  font-family: 'Geist', system-ui, sans-serif;
   font-size: 15px;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
@@ -40,37 +37,39 @@ body {
   color: var(--text);
 }
 
-::-webkit-scrollbar        { width: 5px; height: 5px; }
-::-webkit-scrollbar-track  { background: transparent; }
-::-webkit-scrollbar-thumb  { background: var(--border); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--text-subtle); }
+::-webkit-scrollbar        { width: 4px; height: 4px; }
+::-webkit-scrollbar-track  { background: var(--bg); }
+::-webkit-scrollbar-thumb  { background: var(--border); border-radius: 2px; }
 
 [id] { scroll-margin-top: 88px; }
 
 /* ── Prose ─────────────────────────────────────────────────────────────── */
+
 .prose h1 {
-  font-size: 2rem;
-  font-weight: 700;
-  letter-spacing: -0.025em;
+  font-family: 'Instrument Serif', serif;
+  font-size: 2.25rem;
+  font-weight: 400;
+  letter-spacing: -0.015em;
   color: var(--text);
   margin-bottom: 0.75rem;
-  line-height: 1.15;
+  line-height: 1.12;
 }
 
 .prose h2 {
-  font-size: 1.2rem;
+  font-family: 'Geist', sans-serif;
+  font-size: 1.1rem;
   font-weight: 600;
   color: var(--text);
   margin-top: 2.75rem;
   margin-bottom: 0.75rem;
   padding-bottom: 0.625rem;
   border-bottom: 1px solid var(--border);
-  scroll-margin-top: 88px;
 }
 
 .prose h3 {
-  font-size: 0.95rem;
-  font-weight: 600;
+  font-family: 'Geist', sans-serif;
+  font-size: 0.9375rem;
+  font-weight: 500;
   color: var(--text);
   margin-top: 1.75rem;
   margin-bottom: 0.5rem;
@@ -92,23 +91,21 @@ body {
 .prose ul li {
   color: var(--text-muted);
   line-height: 1.8;
-  padding-left: 1.375rem;
+  padding-left: 1.25rem;
   position: relative;
   margin-bottom: 0.3rem;
   font-size: 0.9375rem;
 }
 
 .prose ul li::before {
-  content: "–";
+  content: "—";
   position: absolute;
   left: 0;
-  color: var(--text-subtle);
+  color: var(--border-bright);
+  font-family: 'Geist Mono', monospace;
 }
 
-.prose ol {
-  padding-left: 1.5rem;
-  margin-bottom: 1rem;
-}
+.prose ol { padding-left: 1.5rem; margin-bottom: 1rem; }
 
 .prose ol li {
   color: var(--text-muted);
@@ -117,24 +114,21 @@ body {
 }
 
 .prose a {
-  color: var(--accent);
+  color: var(--lime);
   text-decoration: none;
-  border-bottom: 1px solid var(--accent-border);
-  transition: border-color 0.15s, color 0.15s;
+  border-bottom: 1px solid var(--lime-border);
+  transition: border-color 0.15s;
 }
 
-.prose a:hover {
-  color: #a899ff;
-  border-bottom-color: rgba(124, 106, 247, 0.5);
-}
+.prose a:hover { border-bottom-color: var(--lime); }
 
 .prose strong { font-weight: 600; color: var(--text); }
 
 .prose code {
-  font-family: "JetBrains Mono", monospace;
+  font-family: 'Geist Mono', monospace;
   font-size: 0.78rem;
-  background: var(--bg-elevated);
-  color: #b8b2f8;
+  background: var(--surface);
+  color: var(--lime);
   padding: 0.15rem 0.45rem;
   border-radius: 4px;
   border: 1px solid var(--border);
@@ -144,4 +138,14 @@ body {
   border: none;
   border-top: 1px solid var(--border);
   margin: 2.25rem 0;
+}
+
+/* Section label pattern from Auron app */
+.mono-label {
+  font-family: 'Geist Mono', monospace;
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 1rem;
 }

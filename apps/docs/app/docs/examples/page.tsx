@@ -8,22 +8,17 @@ export const metadata: Metadata = { title: "Examples" };
 export default function Examples() {
   return (
     <div className="prose">
-      <p className="text-xs uppercase tracking-widest mb-4" style={{ color: "var(--text-subtle)", letterSpacing: "0.1em" }}>
-        Examples
-      </p>
+      <p className="mono-label">Examples</p>
       <h1>Examples</h1>
-      <p style={{ color: "var(--text-muted)" }}>
+      <p style={{ color: "var(--text-muted)", marginBottom: "2rem" }}>
         Real integration patterns you can copy directly into your project.
       </p>
-
       <hr />
 
       <h2>E-commerce checkout</h2>
       <p>
-        A standalone Next.js store demonstrating the full payment flow: product listing → Phantom connect → USDC quote → on-chain transfer → Solscan confirmation. The demo is live at{" "}
-        <a href="https://github.com/anirudhh206/auron" target="_blank" rel="noopener noreferrer">
-          github.com/anirudhh206/auron
-        </a>.
+        A standalone Next.js store demonstrating the full payment flow: product listing → Phantom connect → USDC quote → on-chain transfer → Solscan confirmation. Live demo at{" "}
+        <a href="https://auron-mocha.vercel.app" target="_blank" rel="noopener noreferrer">auron-mocha.vercel.app</a>.
       </p>
 
       <h3>Project layout</h3>
@@ -37,14 +32,12 @@ export default function Examples() {
 ├── components/
 │   └── AuronCheckout.tsx   # 8-state payment machine
 └── app/
-    ├── page.tsx             # store listing (Zara-style grid)
+    ├── page.tsx             # store listing (editorial grid)
     └── checkout/page.tsx    # split checkout layout`}
       />
 
       <h3>Payment state machine</h3>
-      <p>
-        The checkout component cycles through 8 states — each renders different UI with no loading spinners layered over content.
-      </p>
+      <p>The checkout component cycles through 8 states — each renders a different UI with no loading spinners layered over content.</p>
       <CodeBlock
         language="ts"
         code={`type Step =
@@ -59,22 +52,20 @@ export default function Examples() {
       />
 
       <h3>Human wallet flow — no API key</h3>
-      <p>
-        The demo submits payments without an <code>x-api-key</code> header, which triggers Auron&apos;s human wallet mode.
-      </p>
+      <p>The demo submits payments without an <code>x-api-key</code> header, which triggers Auron&apos;s human wallet mode.</p>
       <CodeBlock
         language="ts"
         filename="lib/auron.ts"
-        code={`export async function submitPayment(body: { ... }) {
+        code={`export async function submitPayment(body: PaymentBody) {
   const res = await fetch(\`\${BASE_URL}/api/v1/pay\`, {
     method:  "POST",
     headers: { "Content-Type": "application/json" },
-    // No x-api-key → human wallet flow, passes through
+    // No x-api-key → human wallet flow
     body:    JSON.stringify(body),
   });
 
   if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  return res.json() as Promise<{ paymentId: string; status: string }>;
 }`}
       />
 
@@ -107,7 +98,7 @@ const tools = [
     name: "get_payment_quote",
     description: "Get the USDC cost for an INR payment",
     input_schema: {
-      type: "object",
+      type: "object" as const,
       properties: {
         inrAmount: { type: "number", description: "INR amount to pay" },
       },
@@ -134,9 +125,7 @@ async function paymentAgent(userMessage: string) {
       />
 
       <h3>Daily spend limits</h3>
-      <p>
-        Each API key has a <code>dailyLimitInr</code> field in the <code>api_keys</code> table. Agents that exceed their limit receive <code>402</code> with remaining allowance details.
-      </p>
+      <p>Each API key has a <code>dailyLimitInr</code> field in the <code>api_keys</code> table. Agents that exceed their limit receive <code>402</code> with remaining allowance details.</p>
       <CodeBlock
         language="json"
         code={`{
@@ -151,6 +140,51 @@ async function paymentAgent(userMessage: string) {
       <Callout type="tip">
         For multi-agent setups, issue one API key per agent and set independent <code>dailyLimitInr</code> values. This gives you per-agent spend visibility and lets you kill a runaway agent by revoking just its key.
       </Callout>
+
+      <hr />
+
+      <h2 id="nextjs">Next.js server action</h2>
+      <p>Use a Next.js Server Action to keep your API key server-side and submit payments in one step from a form.</p>
+      <CodeBlock
+        language="ts"
+        filename="app/actions/pay.ts"
+        code={`"use server";
+import { AuronClient } from "@auron-solana/sdk";
+
+const auron = new AuronClient({
+  apiKey:  process.env.AURON_API_KEY!,
+  baseUrl: "https://auron-mocha.vercel.app",
+});
+
+export async function createQuote(inrAmount: number) {
+  return auron.getQuote(inrAmount);
+}
+
+export async function processPayment(formData: FormData) {
+  const txSignature = formData.get("txSignature") as string;
+  const inrAmount   = Number(formData.get("inrAmount"));
+
+  const quote = await auron.getQuote(inrAmount);
+
+  const res = await fetch("https://auron-mocha.vercel.app/api/v1/pay", {
+    method:  "POST",
+    headers: { "Content-Type": "application/json", "x-api-key": process.env.AURON_API_KEY! },
+    body: JSON.stringify({
+      txSignature,
+      inrAmount,
+      usdcAmount:     quote.usdcAmount,
+      quoteFxRate:    quote.auronRate,
+      merchantUpiId:  process.env.MERCHANT_UPI!,
+      merchantName:   "My Store",
+      paymentId:      crypto.randomUUID().replace(/-/g, ""),
+      idempotencyKey: crypto.randomUUID().replace(/-/g, ""),
+    }),
+  });
+
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}`}
+      />
 
       <PageNav />
     </div>
