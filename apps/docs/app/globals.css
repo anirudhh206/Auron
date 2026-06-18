@@ -1,0 +1,147 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg:            #09090f;
+  --bg-sidebar:    #0c0c14;
+  --bg-elevated:   #111119;
+  --bg-hover:      #16161f;
+  --bg-code:       #05050a;
+  --border:        #1e1e2c;
+  --border-code:   #181824;
+  --text:          #e2e2f0;
+  --text-muted:    #6b6b8a;
+  --text-subtle:   #3a3a54;
+  --text-code:     #cdd3f2;
+  --accent:        #7c6af7;
+  --accent-muted:  rgba(124, 106, 247, 0.12);
+  --accent-border: rgba(124, 106, 247, 0.25);
+  --green:         #4ade80;
+  --green-muted:   rgba(74, 222, 128, 0.1);
+  --amber:         #fbbf24;
+  --amber-muted:   rgba(251, 191, 36, 0.1);
+  --red:           #f87171;
+  --red-muted:     rgba(248, 113, 113, 0.1);
+}
+
+* { box-sizing: border-box; }
+
+html {
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+::-webkit-scrollbar        { width: 5px; height: 5px; }
+::-webkit-scrollbar-track  { background: transparent; }
+::-webkit-scrollbar-thumb  { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-subtle); }
+
+[id] { scroll-margin-top: 88px; }
+
+/* ── Prose ─────────────────────────────────────────────────────────────── */
+.prose h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--text);
+  margin-bottom: 0.75rem;
+  line-height: 1.15;
+}
+
+.prose h2 {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-top: 2.75rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.625rem;
+  border-bottom: 1px solid var(--border);
+  scroll-margin-top: 88px;
+}
+
+.prose h3 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-top: 1.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.prose p {
+  color: var(--text-muted);
+  line-height: 1.8;
+  margin-bottom: 1rem;
+  font-size: 0.9375rem;
+}
+
+.prose ul {
+  list-style: none;
+  padding: 0;
+  margin-bottom: 1rem;
+}
+
+.prose ul li {
+  color: var(--text-muted);
+  line-height: 1.8;
+  padding-left: 1.375rem;
+  position: relative;
+  margin-bottom: 0.3rem;
+  font-size: 0.9375rem;
+}
+
+.prose ul li::before {
+  content: "–";
+  position: absolute;
+  left: 0;
+  color: var(--text-subtle);
+}
+
+.prose ol {
+  padding-left: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.prose ol li {
+  color: var(--text-muted);
+  line-height: 1.8;
+  margin-bottom: 0.3rem;
+}
+
+.prose a {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid var(--accent-border);
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.prose a:hover {
+  color: #a899ff;
+  border-bottom-color: rgba(124, 106, 247, 0.5);
+}
+
+.prose strong { font-weight: 600; color: var(--text); }
+
+.prose code {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.78rem;
+  background: var(--bg-elevated);
+  color: #b8b2f8;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+.prose hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 2.25rem 0;
+}

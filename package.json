@@ -7,7 +7,9 @@
     "dev":        "cd apps/web && npm run dev",
     "build":      "cd apps/web && npm run build",
     "lint":       "cd apps/web && npm run lint",
-    "type-check": "cd apps/web && npm run type-check"
+    "type-check": "cd apps/web && npm run type-check",
+    "dev:docs":   "cd apps/docs && npm run dev",
+    "build:docs": "cd apps/docs && npm run build"
   },
   "engines": {
     "node": ">=18.0.0"
