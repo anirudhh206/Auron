@@ -155,6 +155,8 @@ function Nav({ scrolled }: { scrolled: boolean }) {
           <a key={l} href={`#${l.toLowerCase().replace(/ /g, "-")}`}
             style={{ fontSize: 14, color: C.textMuted, textDecoration: "none" }}>{l}</a>
         ))}
+        <a href={`${process.env.NEXT_PUBLIC_DOCS_URL ?? "http://localhost:3002"}/docs/introduction`} target="_blank" rel="noopener noreferrer"
+          style={{ fontSize: 14, color: C.textMuted, textDecoration: "none" }}>Docs</a>
       </div>
       <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
         <a href="https://solscan.io/tx/YOUR_TX_HASH?cluster=devnet" target="_blank" rel="noopener noreferrer"
@@ -655,18 +657,34 @@ function Footer() {
           <p style={{ fontSize: 13, color: C.textDim, lineHeight: 1.7, maxWidth: 220 }}>Financial settlement infrastructure for Solana.</p>
         </div>
         {[
-          { title: "Product", links: ["How it works", "Settlement", "Security", "Stats"] },
-          { title: "Developers", links: ["GitHub", "Solscan", "API Docs", "Solana Actions"] },
-          { title: "Built with", links: ["Solana", "Claude AI", "OnMeta", "Supabase"] },
+          { title: "Product", links: [
+            { label: "How it works",   href: "#how-it-works"  },
+            { label: "Settlement",     href: "#settlement"    },
+            { label: "Security",       href: "#security"      },
+            { label: "Stats",          href: "#stats"         },
+          ]},
+          { title: "Developers", links: [
+            { label: "Docs",           href: `${process.env.NEXT_PUBLIC_DOCS_URL ?? "http://localhost:3002"}/docs/introduction`, external: true },
+            { label: "GitHub",         href: "https://github.com/anirudhh206/auron",            external: true },
+            { label: "Solscan",        href: "https://solscan.io/?cluster=devnet",              external: true },
+            { label: "Solana Actions", href: "https://auron-mocha.vercel.app/api/actions/pay",  external: true },
+          ]},
+          { title: "Built with", links: [
+            { label: "Solana",   href: "https://solana.com",      external: true },
+            { label: "Claude AI",href: "https://anthropic.com",   external: true },
+            { label: "OnMeta",   href: "https://onmeta.in",       external: true },
+            { label: "Supabase", href: "https://supabase.com",    external: true },
+          ]},
         ].map((col, i) => (
           <div key={i}>
             <p style={{ fontFamily: "'Geist Mono', monospace", fontSize: 10, color: C.textDim, letterSpacing: "0.12em", marginBottom: 20 }}>{col.title.toUpperCase()}</p>
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {col.links.map(l => (
-                <a key={l} href="#" style={{ fontSize: 13, color: C.textMuted, textDecoration: "none", transition: "color 0.15s" }}
+                <a key={l.label} href={l.href} {...(l.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
+                  style={{ fontSize: 13, color: C.textMuted, textDecoration: "none", transition: "color 0.15s" }}
                   onMouseEnter={e => e.currentTarget.style.color = C.text}
                   onMouseLeave={e => e.currentTarget.style.color = C.textMuted}>
-                  {l}
+                  {l.label}
                 </a>
               ))}
             </div>
