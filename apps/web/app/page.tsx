@@ -658,10 +658,10 @@ function Footer() {
         </div>
         {[
           { title: "Product", links: [
-            { label: "How it works",   href: "#how-it-works"  },
-            { label: "Settlement",     href: "#settlement"    },
-            { label: "Security",       href: "#security"      },
-            { label: "Stats",          href: "#stats"         },
+            { label: "How it works",   href: "#how-it-works",  external: false },
+            { label: "Settlement",     href: "#settlement",    external: false },
+            { label: "Security",       href: "#security",      external: false },
+            { label: "Stats",          href: "#stats",         external: false },
           ]},
           { title: "Developers", links: [
             { label: "Docs",           href: `${process.env.NEXT_PUBLIC_DOCS_URL ?? "http://localhost:3002"}/docs/introduction`, external: true },
