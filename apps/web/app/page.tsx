@@ -159,7 +159,7 @@ function Nav({ scrolled }: { scrolled: boolean }) {
           style={{ fontSize: 14, color: C.textMuted, textDecoration: "none" }}>Docs</a>
       </div>
       <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-        <a href="https://solscan.io/tx/YOUR_TX_HASH?cluster=devnet" target="_blank" rel="noopener noreferrer"
+        <a href="https://solscan.io/account/B5DwqnCoDrY8ezfGaZfpAnvZ4FwCtPNHk6vT5nRgFENg?cluster=devnet" target="_blank" rel="noopener noreferrer"
           className="ghost-btn" style={{ padding: "8px 16px", borderRadius: 6, fontSize: 12, display: "inline-block" }}>
           View on Solscan
         </a>
@@ -272,14 +272,14 @@ function Hero() {
             className="lime-btn" style={{ padding: "14px 36px", borderRadius: 8, fontSize: 16, display: "inline-block", textDecoration: "none" }}>
             Open App
           </Link>
-          <a href="https://solscan.io/tx/YOUR_TX_HASH?cluster=devnet" target="_blank" rel="noopener noreferrer" style={{
+          <a href="https://solscan.io/account/B5DwqnCoDrY8ezfGaZfpAnvZ4FwCtPNHk6vT5nRgFENg?cluster=devnet" target="_blank" rel="noopener noreferrer" style={{
             fontSize: 13, color: C.textDim, textDecoration: "none",
             fontFamily: "'Geist Mono', monospace",
             borderBottom: `1px solid ${C.border}`,
             paddingBottom: 2,
             transition: "color 0.15s, border-color 0.15s",
           }}>
-            View Solscan TX →
+            View Program on Solscan →
           </a>
         </div>
         <div style={delay(450)}><HeroStats /></div>
@@ -543,7 +543,7 @@ function Stats() {
           ))}
         </div>
         {/* Solscan proof bar */}
-        <a href="https://solscan.io/tx/YOUR_TX_HASH?cluster=devnet" target="_blank" rel="noopener noreferrer"
+        <a href="https://solscan.io/account/B5DwqnCoDrY8ezfGaZfpAnvZ4FwCtPNHk6vT5nRgFENg?cluster=devnet" target="_blank" rel="noopener noreferrer"
           style={{
             display: "flex", alignItems: "center", gap: 10,
             background: C.surface, border: `1px solid ${C.border}`,
@@ -555,7 +555,7 @@ function Stats() {
           onMouseLeave={e => e.currentTarget.style.borderColor = C.border}>
           <span style={{ fontSize: 14 }}>↗</span>
           <span style={{ fontFamily: "'Geist Mono', monospace", fontSize: 12, color: C.textDim }}>
-            View verified devnet transaction on Solscan →
+            View Auron savings vault program on Solscan devnet →
           </span>
         </a>
       </div>
@@ -613,8 +613,19 @@ function SavingsVault() {
   );
 }
 
+const BLINK_URL = "https://auron-mocha.vercel.app/api/actions/pay?to=merchant@paytm&amount=500&currency=INR";
+
 function Builders() {
   const [ref, visible] = useScrollReveal();
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    navigator.clipboard.writeText(BLINK_URL).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
   return (
     <section style={{ padding: "120px 48px" }}>
       <div style={{ maxWidth: 1100, margin: "0 auto" }}>
@@ -631,16 +642,22 @@ function Builders() {
           <p style={{ fontSize: 16, color: C.textMuted, maxWidth: 540, margin: "0 auto 40px", lineHeight: 1.7 }}>
             Auron implements the Solana Actions spec. Generate a Blink — a shareable URL — for any payment. Drop it in a tweet, Discord, or website.
           </p>
-          <div style={{
-            display: "inline-flex", alignItems: "center", gap: 16,
-            background: C.surface, border: `1px solid ${C.border}`,
-            borderRadius: 100, padding: "12px 20px", maxWidth: "100%",
-          }}>
+          <div
+            onClick={handleCopy}
+            title={copied ? "Copied!" : "Click to copy"}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 16,
+              background: C.surface, border: `1px solid ${copied ? C.lime : C.border}`,
+              borderRadius: 100, padding: "12px 20px", maxWidth: "100%",
+              cursor: "pointer", transition: "border-color 0.2s",
+            }}>
             <span style={{ fontFamily: "'Geist Mono', monospace", fontSize: 11, color: C.lime }}>GET</span>
             <span style={{ fontFamily: "'Geist Mono', monospace", fontSize: 11, color: C.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              https://auron.app/api/actions/pay?to=rahul.sol&amount=500&currency=INR
+              {BLINK_URL}
             </span>
-            <span style={{ fontSize: 14, color: C.textDim, cursor: "pointer", flexShrink: 0 }}>⎘</span>
+            <span style={{ fontFamily: "'Geist Mono', monospace", fontSize: 10, color: copied ? C.lime : C.textDim, flexShrink: 0, letterSpacing: "0.06em" }}>
+              {copied ? "COPIED" : "⎘"}
+            </span>
           </div>
         </div>
       </div>
@@ -667,7 +684,7 @@ function Footer() {
             { label: "Docs",           href: `${process.env.NEXT_PUBLIC_DOCS_URL ?? "http://localhost:3002"}/docs/introduction`, external: true },
             { label: "GitHub",         href: "https://github.com/anirudhh206/auron",            external: true },
             { label: "Solscan",        href: "https://solscan.io/?cluster=devnet",              external: true },
-            { label: "Solana Actions", href: "https://auron-mocha.vercel.app/api/actions/pay",  external: true },
+            { label: "Solana Actions", href: "https://auron-mocha.vercel.app/api/actions/pay?to=merchant@paytm&amount=500&currency=INR", external: true },
           ]},
           { title: "Built with", links: [
             { label: "Solana",   href: "https://solana.com",      external: true },

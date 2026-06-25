@@ -194,6 +194,24 @@ export async function getTransactionById(
   }
 }
 
+export async function getTransactionBySignature(
+  txSignature: string
+): Promise<LedgerResult<Transaction>> {
+  try {
+    const { data, error } = await db()
+      .from("transactions")
+      .select()
+      .eq("tx_signature", txSignature)
+      .maybeSingle();
+
+    if (error) return { ok: false, error: error.message };
+    if (!data)  return { ok: false, error: "Not found" };
+    return { ok: true, data: data as Transaction };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown" };
+  }
+}
+
 export async function getTransactionByIdempotencyKey(
   key: string
 ): Promise<LedgerResult<Transaction>> {

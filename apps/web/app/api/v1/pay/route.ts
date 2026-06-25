@@ -17,11 +17,10 @@
 
 import { NextRequest, NextResponse }  from "next/server";
 import { verifyUsdcTransfer }          from "@/lib/verify-tx";
-import { initiateOnMetaPayout }        from "@/lib/onmeta";
 import { checkLiquidityGate }          from "@/lib/liquidity";
 import { validateApiKey, type AgentContext } from "@/lib/api-key";
-// Razorpay fallback is handled by the settlement worker (PATH B — treasury + Razorpay X).
-// v1/pay only dispatches PATH A (OnMeta). Worker retries handle PATH B automatically.
+import { chooseProvider, detectRegion } from "@/lib/routing";
+import { getCorridor }                  from "@/lib/corridors";
 import {
   createTransaction,
   transitionTransaction,
@@ -45,49 +44,64 @@ interface DispatchResult {
   errorCode?: string;
   retryable?: boolean;
   provider:   string;
+  corridorId: string;
 }
 
 async function dispatchSettlement(
-  provider: string,
   params: {
-    inrAmount:     number;
-    merchantUpiId: string;
-    merchantName:  string;
-    usdcAmount:    number;
+    inrAmount:      number;
+    merchantUpiId:  string;
+    merchantName:   string;
+    usdcAmount:     number;
     idempotencyKey: string;
-    paymentId:     string;
-    txSignature:   string;
-    userId:        string;
+    paymentId:      string;
+    txSignature:    string;
+    userId:         string;
+    quoteFxRate?:   number;
   }
 ): Promise<DispatchResult> {
-  // PATH A — OnMeta: full USDC→INR offramp + UPI payout in one step.
-  // This is the only path dispatched synchronously here.
-  // PATH B (Treasury + Razorpay X) is handled by the async settlement worker
-  // which checks INR treasury balance and calls Razorpay X if OnMeta fails.
+  // Select provider via routing engine (replaces hardcoded OnMeta)
+  const region = detectRegion("INR", params.merchantUpiId);
+  const route  = chooseProvider(region, params.usdcAmount);
+
+  // Map routing engine path → corridor
+  // "onmeta" and "treasury_razorpay" both settle via UPI India corridor.
+  // The corridor's settle() calls OnMeta; the settlement worker handles Razorpay fallback.
+  const corridorId = "upi_india";
+
+  console.log(
+    `[v1/pay] Routing → path=${route.path} corridor=${corridorId} ` +
+    `fee=${route.feePercent}% est=${route.estimatedTimeLabel}`
+  );
+
   try {
-    const r = await initiateOnMetaPayout({
+    const corridor = getCorridor(corridorId);
+    const result   = await corridor.settle({
       usdcAmount:    params.usdcAmount,
-      merchantUpiId: params.merchantUpiId,
-      merchantName:  params.merchantName,
-      inrAmount:     params.inrAmount,
+      fiatAmount:    params.inrAmount,
+      fxRate:        params.quoteFxRate ?? 0,
+      recipientId:   params.merchantUpiId,
+      recipientName: params.merchantName,
+      paymentId:     params.paymentId,
+      idempotencyKey: params.idempotencyKey,
       txSignature:   params.txSignature,
       userId:        params.userId,
     });
+
     return {
-      success:   r.success,
-      payoutId:  r.payoutId,
-      utr:       r.utrNumber,
-      status:    r.status,
-      provider:  "onmeta",
-      retryable: true,
+      success:    result.success,
+      payoutId:   result.payoutId,
+      utr:        result.reference,
+      status:     result.providerStatus,
+      error:      result.error,
+      retryable:  result.retryable ?? true,
+      provider:   route.path,
+      corridorId,
     };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "OnMeta error";
-    console.warn(
-      `[v1/pay] OnMeta dispatch failed paymentId=${params.paymentId}: ${msg}. ` +
-      `Settlement worker will retry via treasury path.`
-    );
-    return { success: false, error: msg, retryable: true, provider: "onmeta" };
+    const msg = err instanceof Error ? err.message : "Corridor error";
+    console.warn(`[v1/pay] Corridor ${corridorId} dispatch failed paymentId=${params.paymentId}: ${msg}`);
+    return { success: false, error: msg, retryable: true, provider: route.path, corridorId };
   }
 }
 
@@ -353,8 +367,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     await transitionTransaction(txnId, "settling", { reason: `Settlement dispatched via ${provider}` });
   }
 
-  // ── 7. Dispatch to provider selected by routing engine ────────────────────
-  const result = await dispatchSettlement(provider, {
+  // ── 7. Dispatch via routing engine → corridor abstraction ─────────────────
+  const result = await dispatchSettlement({
     inrAmount:      d.inrAmount,
     merchantUpiId:  d.merchantUpiId,
     merchantName:   d.merchantName,
@@ -363,6 +377,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     paymentId:      d.paymentId,
     txSignature:    d.txSignature,
     userId:         d.userId,
+    quoteFxRate:    d.quoteFxRate,
   });
 
   const durationMs = Date.now() - start;

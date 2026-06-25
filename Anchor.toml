@@ -5,7 +5,8 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-savings_vault = "B5DwqnCoDrY8ezfGaZfpAnvZ4FwCtPNHk6vT5nRgFENg"
+savings_vault   = "B5DwqnCoDrY8ezfGaZfpAnvZ4FwCtPNHk6vT5nRgFENg"
+payment_escrow  = "EsCRoW1111111111111111111111111111111111111"
 
 [registry]
 url = "https://api.apr.dev"
