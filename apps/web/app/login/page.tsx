@@ -94,6 +94,15 @@ export default function LoginPage() {
     });
   }, [router, supabase]);
 
+  // Show error from OAuth callback (?error=auth_failed)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const err = params.get("error");
+    if (err === "auth_failed") {
+      setError("Google sign-in failed. Please try again or use email.");
+    }
+  }, []);
+
   // Carousel auto-rotate
   useEffect(() => {
     const t = setInterval(() => setCarouselIdx(i => (i + 1) % 3), 3500);
@@ -133,8 +142,13 @@ export default function LoginPage() {
 
     setLoading(true);
     if (mode === "signup") {
-      const { error } = await supabase.auth.signUp({ email, password });
+      const { data, error } = await supabase.auth.signUp({ email, password });
       if (error) { setError(error.message); setLoading(false); return; }
+      if (!data.session) {
+        setError(`Check your inbox — we sent a confirmation link to ${email}. Please verify your email before signing in.`);
+        setLoading(false);
+        return;
+      }
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) { setError(error.message); setLoading(false); return; }

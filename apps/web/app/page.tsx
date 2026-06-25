@@ -155,8 +155,8 @@ function Nav({ scrolled }: { scrolled: boolean }) {
           <a key={l} href={`#${l.toLowerCase().replace(/ /g, "-")}`}
             style={{ fontSize: 14, color: C.textMuted, textDecoration: "none" }}>{l}</a>
         ))}
-        <a href={`${process.env.NEXT_PUBLIC_DOCS_URL ?? "http://localhost:3002"}/docs/introduction`} target="_blank" rel="noopener noreferrer"
-          style={{ fontSize: 14, color: C.textMuted, textDecoration: "none" }}>Docs</a>
+        <Link href="/docs/introduction"
+          style={{ fontSize: 14, color: C.textMuted, textDecoration: "none" }}>Docs</Link>
       </div>
       <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
         <a href="https://solscan.io/account/B5DwqnCoDrY8ezfGaZfpAnvZ4FwCtPNHk6vT5nRgFENg?cluster=devnet" target="_blank" rel="noopener noreferrer"
@@ -681,7 +681,7 @@ function Footer() {
             { label: "Stats",          href: "#stats",         external: false },
           ]},
           { title: "Developers", links: [
-            { label: "Docs",           href: `${process.env.NEXT_PUBLIC_DOCS_URL ?? "http://localhost:3002"}/docs/introduction`, external: true },
+            { label: "Docs",           href: "/docs/introduction", external: false },
             { label: "GitHub",         href: "https://github.com/anirudhh206/auron",            external: true },
             { label: "Solscan",        href: "https://solscan.io/?cluster=devnet",              external: true },
             { label: "Solana Actions", href: "https://auron-mocha.vercel.app/api/actions/pay?to=merchant@paytm&amount=500&currency=INR", external: true },
