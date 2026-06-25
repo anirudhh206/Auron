@@ -1,13 +1,15 @@
 "use client";
 
-import { useState, useRef, type RefObject, type ChangeEvent } from "react";
+import { useState, useRef, useEffect, type RefObject, type ChangeEvent } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useWallet } from "@solana/wallet-adapter-react";
+import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import { useStore } from "@/store/useStore";
 import { shortAddr } from "@/lib/utils";
 import AuronLogo from "@/components/AuronLogo";
 
-type Step = "welcome" | "pin" | "ceiling" | "features" | "complete";
+type Step = "welcome" | "pin" | "ceiling" | "features" | "wallet" | "complete";
 
 // ─── Design tokens ─────────────────────────────────────────────────────────────
 const C = {
@@ -220,7 +222,7 @@ export default function OnboardingFlow() {
 
   const displayName = address ? shortAddr(address) : "Wallet connected";
 
-  const STEP_ORDER: Step[] = ["welcome", "pin", "ceiling", "features", "complete"];
+  const STEP_ORDER: Step[] = ["welcome", "pin", "ceiling", "features", "wallet", "complete"];
   const stepIdx = STEP_ORDER.indexOf(step);
 
   async function validateAndHashPin(pinValue: string): Promise<string | null> {
@@ -279,7 +281,7 @@ export default function OnboardingFlow() {
 
   function handleComplete() {
     setPrefs({ hasOnboarded: true });
-    setStep("complete");
+    setStep("wallet");
   }
 
   const fadeUp = {
@@ -302,7 +304,7 @@ export default function OnboardingFlow() {
           {/* Step dots */}
           {step !== "complete" && (
             <div className="ob-dots">
-              {[0, 1, 2, 3].map((i) => (
+              {[0, 1, 2, 3, 4].map((i) => (
                 <div
                   key={i}
                   className={`ob-dot ${i === stepIdx - 0 || (i === 0 && stepIdx === 0) ? "ob-dot-active" : "ob-dot-inactive"}`}
@@ -338,6 +340,9 @@ export default function OnboardingFlow() {
               )}
               {step === "features" && (
                 <FeaturesStep onNext={handleComplete} isSubmitting={isSubmitting} />
+              )}
+              {step === "wallet" && (
+                <WalletStep onNext={() => setStep("complete")} />
               )}
               {step === "complete" && <CompleteStep />}
 
@@ -627,7 +632,77 @@ function FeaturesStep({ onNext, isSubmitting }: { onNext: () => void; isSubmitti
 }
 
 // ── Step 5: Complete ───────────────────────────────────────────────────────────
+// ── Step: Wallet connect ───────────────────────────────────────────────────────
+function WalletStep({ onNext }: { onNext: () => void }) {
+  const { connected, publicKey } = useWallet();
+  const { setVisible } = useWalletModal();
+
+  // Auto-advance once wallet connects
+  useEffect(() => {
+    if (connected) onNext();
+  }, [connected, onNext]);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 24, textAlign: "center" }}>
+      <div style={{
+        width: 64, height: 64, borderRadius: 18,
+        background: "rgba(200,241,53,0.08)", border: "1px solid rgba(200,241,53,0.25)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}>
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+          <path d="M19 7H5C3.9 7 3 7.9 3 9v10c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V9c0-1.1-.9-2-2-2z" stroke={C.lime} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M16 3H8L6 7h12l-2-4z" stroke={C.lime} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          <circle cx="16" cy="14" r="1.5" fill={C.lime}/>
+        </svg>
+      </div>
+
+      <div>
+        <p style={{ fontFamily: "'Instrument Serif',serif", fontSize: 26, color: C.text, margin: 0 }}>
+          Connect Your Wallet
+        </p>
+        <p style={{ fontFamily: "'Geist Mono',monospace", fontSize: 11, color: C.dim, margin: "8px 0 0", letterSpacing: "0.04em" }}>
+          Required to send USDC payments on Solana
+        </p>
+      </div>
+
+      <div style={{
+        width: "100%", padding: "14px 16px", borderRadius: 12,
+        background: C.s2, border: `1px solid ${C.border}`,
+        display: "flex", flexDirection: "column", gap: 8,
+      }}>
+        {["Phantom", "Backpack", "Solflare"].map((w) => (
+          <div key={w} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ width: 4, height: 4, borderRadius: "50%", background: C.lime, flexShrink: 0 }} />
+            <p style={{ fontSize: 12, color: C.muted, margin: 0 }}>{w} supported</p>
+          </div>
+        ))}
+      </div>
+
+      <button className="ob-btn" onClick={() => setVisible(true)} style={{ width: "100%" }}>
+        Connect Wallet
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M5 12h14M12 5l7 7-7 7"/>
+        </svg>
+      </button>
+
+      <button
+        onClick={onNext}
+        style={{
+          background: "none", border: "none", cursor: "pointer",
+          fontFamily: "'Geist Mono',monospace", fontSize: 11, color: C.dim,
+          letterSpacing: "0.04em",
+        }}
+      >
+        Skip — I&apos;ll connect later
+      </button>
+    </div>
+  );
+}
+
+// ── Step: Complete ─────────────────────────────────────────────────────────────
 function CompleteStep() {
+  const router = useRouter();
+
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 24, textAlign: "center" }}>
       {/* Checkmark ring */}
@@ -673,7 +748,7 @@ function CompleteStep() {
 
       <button
         className="ob-btn"
-        onClick={() => globalThis.location.reload()}
+        onClick={() => router.push("/app")}
         style={{ marginTop: 4 }}
       >
         Start Using Auron
