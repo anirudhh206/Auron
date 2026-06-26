@@ -45,13 +45,13 @@ export const metadata: Metadata = {
     url: "/",
     siteName: "Auron",
     title: "Auron — Your money, your words.",
-    description: "Type what you want. The blockchain does it. Invisibly.",
+    description: "Send USDC from your Phantom wallet. Merchants receive INR via UPI — instantly, on-chain, no exchange needed.",
     images: [{ url: "/og-image.png", width: 1200, height: 630, alt: "Auron" }],
   },
   twitter: {
     card: "summary_large_image",
     title: "Auron — Your money, your words.",
-    description: "Type what you want. The blockchain does it. Invisibly.",
+    description: "Send USDC from your Phantom wallet. Merchants receive INR via UPI — instantly, on-chain, no exchange needed.",
     images: ["/og-image.png"],
   },
   icons: {
