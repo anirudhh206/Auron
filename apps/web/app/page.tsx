@@ -195,7 +195,7 @@ function HeroBadge() {
 function HeroStats() {
   const stats = [
     { value: "14.2s", label: "AVG SETTLEMENT TIME", color: C.lime },
-    { value: "₹ 14.8M", label: "SETTLED TODAY", color: C.gold },
+    { value: "26",      label: "SETTLED TODAY", color: C.gold },
     { value: "Devnet Verified", label: "SECURITY STATUS", color: C.text },
   ];
   return (
@@ -682,7 +682,6 @@ function Footer() {
           ]},
           { title: "Developers", links: [
             { label: "Docs",           href: "/docs/introduction", external: false },
-            { label: "GitHub",         href: "https://github.com/anirudhh206/auron",            external: true },
             { label: "Solscan",        href: "https://solscan.io/?cluster=devnet",              external: true },
             { label: "Solana Actions", href: "https://auron-mocha.vercel.app/api/actions/pay?to=merchant@paytm&amount=500&currency=INR", external: true },
           ]},
